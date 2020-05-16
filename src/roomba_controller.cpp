@@ -1,11 +1,6 @@
 #include "roomba_controller.h"
 #include <iostream>
-#include <thread>
-#include <sys/ioctl.h>
 #include <vector>
-#include <termios.h> /* POSIX Terminal Control Definitions */
-#include <unistd.h>  /* UNIX standard function definitions */
-#include <fcntl.h>   /* File control definitions */
 #include <cctype>
 #include <sstream>
 #include <strings.h>
@@ -272,32 +267,28 @@ RoombaController::reset(){
 // getCurrentOIMode
 //------------------------------------------------------------------------------
 
-Roomba::OIMode
+Roomba::Sensor::OIMode
 RoombaController::getCurrentOIMode(){
     Roomba::OpCode cmd = Roomba::OpCode::SENSORS;
-    Roomba::SensorPacketID pkt_id = Roomba::SensorPacketID::OI_MODE;
+    Roomba::Sensor::OIMode sensor_pkt;
+
     int n = write(m_fd, &cmd, 1);
-    n = write(m_fd, &pkt_id, 1);
+    n = write(m_fd, sensor_pkt.getId(), 1);
     int bytes_available = 0;
-    vector<uint8_t> rx_buffer;
     int retry_count = 5;
     while(retry_count){
         ioctl(m_fd, FIONREAD, &bytes_available);
         if (bytes_available){
             // Assert if this is more than 1
             // TODO
-            rx_buffer.resize(bytes_available);
-            n = read(m_fd, &rx_buffer[0], bytes_available);
-            //cout << "getCurrentOIMode()) Bytes available: " << bytes_available << " Read: " << n << endl;
-            //cout << ToString(rx_buffer) << endl;
-            Roomba::OIMode mode = (Roomba::OIMode) rx_buffer[0];
-            return mode;
+            read(m_fd, sensor_pkt.getData(), sensor_pkt.getDataSize());
+            return sensor_pkt;
         }
         this_thread::sleep_for(chrono::milliseconds(25));
         retry_count--;
     }
 
-    return Roomba::OIMode::UNAVAILABLE;
+    return sensor_pkt;
 }
 
 //------------------------------------------------------------------------------
@@ -331,25 +322,11 @@ RoombaController::changeOIMode(Roomba::OIMode desired_mode){
 }
 
 //------------------------------------------------------------------------------
-// intTo2sComplementBytes
-//------------------------------------------------------------------------------
-
-void
-RoombaController::intTo2sComplementBytes(int16_t int_val, uint8_t bytes[2]){
-    // We are already on a 2's complement system
-    // Just need to break the number into two bytes
-    // High first then the low
-    uint16_t high = int_val & 0xFF00;
-    bytes[0] = high >> 8;
-    bytes[1] = int_val & 0xFF;
-}
-
-//------------------------------------------------------------------------------
 // drive
 //------------------------------------------------------------------------------
 
 bool
-RoombaController::drive(int16_t vel_in_mm_sec){
+RoombaController::drive(int16_t vel_in_mm_sec, int16_t turn_radius_in_mm){
     // Cap the value
     if (vel_in_mm_sec < -500){
         vel_in_mm_sec = -500;
@@ -358,15 +335,25 @@ RoombaController::drive(int16_t vel_in_mm_sec){
         vel_in_mm_sec = 500;
     }
 
-    uint8_t bytes[2];
-    intTo2sComplementBytes(vel_in_mm_sec, bytes);
+    if (turn_radius_in_mm < -2000){
+        turn_radius_in_mm = -2000;
+    }
+    if (turn_radius_in_mm > 2000){
+        turn_radius_in_mm = 2000;
+    }
 
-    uint8_t radius[2]{0x0, 0x0};
+
+    uint8_t velocity[2];
+    Roomba::utils::To2sComplementBytes(vel_in_mm_sec, velocity);
+
+    uint8_t radius[2];
+    Roomba::utils::To2sComplementBytes(turn_radius_in_mm, radius);
+
     Roomba::OpCode cmd = Roomba::OpCode::DRIVE;
 
     write(m_fd, &cmd, 1);
-    write(m_fd, &bytes[0], 1);
-    write(m_fd, &bytes[1], 1);
+    write(m_fd, &velocity[0], 1);
+    write(m_fd, &velocity[1], 1);
     write(m_fd, &radius[0], 1);
     write(m_fd, &radius[1], 1);
 }
@@ -375,7 +362,7 @@ uint16_t
 RoombaController::getRightEncoder()
 {
     Roomba::OpCode cmd = Roomba::OpCode::SENSORS;
-    Roomba::SensorPacketID pkt_id = Roomba::SensorPacketID::RIGHT_ENC;
+    Roomba::Sensor::PacketId pkt_id = Roomba::Sensor::PacketId::RIGHT_ENC;
     int n = write(m_fd, &cmd, 1);
     n = write(m_fd, &pkt_id, 1);
     this_thread::sleep_for(chrono::milliseconds(50));

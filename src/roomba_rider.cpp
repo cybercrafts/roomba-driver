@@ -33,25 +33,44 @@ int main(int argc, char** argv) {
 
     // Get the current Mode
     auto mode = robot_controller->getCurrentOIMode();
-    cout << "Current mode: " << (int) mode << endl;
+    cout << "Current mode: " << mode.toString() << endl;
 
     cout << "Switching to FULL mode\n";
     auto status = robot_controller->toFullMode();
     mode = robot_controller->getCurrentOIMode();
-    cout << "Current mode: " << (int) mode << endl;
+    cout << "Current mode: " << mode.toString() << endl;
 
     cout << "Right Encoder: " << robot_controller->getRightEncoder() << endl;
 
     cout << "Switching to SAFE mode\n";
     status = robot_controller->toSafeMode();
     mode = robot_controller->getCurrentOIMode();
-    cout << "Current mode: " << (int) mode << endl;
+    cout << "Current mode: " << mode.toString() << endl;
 
-    // // Drive
+    cout << "Testing drive train: FORWARD\n";
+    // Drive forward
     int16_t velocity_mm_sec = 120;
-    robot_controller->drive(velocity_mm_sec);
-    this_thread::sleep_for(chrono::milliseconds(1000));
-    robot_controller->drive(0);
+    robot_controller->drive(velocity_mm_sec, 100);
+    this_thread::sleep_for(chrono::milliseconds(2000));
+    robot_controller->stop();
+
+    auto distance = robot_controller->getDistanceTravelled();
+    cout << "Distance travelled: " << distance.toString() << endl;
+    cout << "Angle travelled: " << robot_controller->getAngleTurned().toString() << endl;
+
+    // Drive backward
+    cout << "Testing drive train: BACKWARD\n";
+
+    velocity_mm_sec = -velocity_mm_sec;
+    robot_controller->drive(velocity_mm_sec, 0);
+    this_thread::sleep_for(chrono::milliseconds(2000));
+    robot_controller->stop();
+
+    distance = robot_controller->getDistanceTravelled();
+    cout << "Distance travelled: " << distance.toString() << endl;
+    cout << "Angle travelled: " << robot_controller->getAngleTurned().toString() << endl;
+
+    cout << "Complete\n";
 
     robot_controller->terminate();
     cout << "Robot Terminated\n";
