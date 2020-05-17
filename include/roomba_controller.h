@@ -41,9 +41,10 @@ public:
         return drive(0, 0);
     }
 
-    Roomba::Sensor::DistanceTravelled getDistanceTravelled(){
+    template <typename T>
+    T getSensorData(){
         Roomba::OpCode cmd = Roomba::OpCode::SENSORS;
-        Roomba::Sensor::DistanceTravelled sensor_pkt;
+        T sensor_pkt;
 
         int n = write(m_fd, &cmd, 1);
         n = write(m_fd, sensor_pkt.getId(), 1);
@@ -63,27 +64,49 @@ public:
         return sensor_pkt;
     }
 
-    Roomba::Sensor::AngleTurned getAngleTurned(){
-        Roomba::OpCode cmd = Roomba::OpCode::SENSORS;
-        Roomba::Sensor::AngleTurned sensor_pkt;
+    // Roomba::Sensor::DistanceTravelled getDistanceTravelled(){
+    //     Roomba::OpCode cmd = Roomba::OpCode::SENSORS;
+    //     Roomba::Sensor::DistanceTravelled sensor_pkt;
 
-        int n = write(m_fd, &cmd, 1);
-        n = write(m_fd, sensor_pkt.getId(), 1);
-        int bytes_available = 0;
-        int retry_count = 5;
-        while(retry_count){
-            ioctl(m_fd, FIONREAD, &bytes_available);
-            if (bytes_available){
-                uint8_t bytes[2];
-                read(m_fd, sensor_pkt.getData(), sensor_pkt.getDataSize());
-                return sensor_pkt;
-            }
-            std::this_thread::sleep_for(std::chrono::milliseconds(25));
-            retry_count--;
-        }
+    //     int n = write(m_fd, &cmd, 1);
+    //     n = write(m_fd, sensor_pkt.getId(), 1);
+    //     int bytes_available = 0;
+    //     int retry_count = 5;
+    //     while(retry_count){
+    //         ioctl(m_fd, FIONREAD, &bytes_available);
+    //         if (bytes_available){
+    //             uint8_t bytes[2];
+    //             read(m_fd, sensor_pkt.getData(), sensor_pkt.getDataSize());
+    //             return sensor_pkt;
+    //         }
+    //         std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    //         retry_count--;
+    //     }
 
-        return sensor_pkt;
-    }
+    //     return sensor_pkt;
+    // }
+
+    // Roomba::Sensor::AngleTurned getAngleTurned(){
+    //     Roomba::OpCode cmd = Roomba::OpCode::SENSORS;
+    //     Roomba::Sensor::AngleTurned sensor_pkt;
+
+    //     int n = write(m_fd, &cmd, 1);
+    //     n = write(m_fd, sensor_pkt.getId(), 1);
+    //     int bytes_available = 0;
+    //     int retry_count = 5;
+    //     while(retry_count){
+    //         ioctl(m_fd, FIONREAD, &bytes_available);
+    //         if (bytes_available){
+    //             uint8_t bytes[2];
+    //             read(m_fd, sensor_pkt.getData(), sensor_pkt.getDataSize());
+    //             return sensor_pkt;
+    //         }
+    //         std::this_thread::sleep_for(std::chrono::milliseconds(25));
+    //         retry_count--;
+    //     }
+
+    //     return sensor_pkt;
+    // }
 
 
 private:

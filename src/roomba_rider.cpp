@@ -54,9 +54,14 @@ int main(int argc, char** argv) {
     this_thread::sleep_for(chrono::milliseconds(2000));
     robot_controller->stop();
 
-    auto distance = robot_controller->getDistanceTravelled();
+    auto distance =
+        robot_controller->getSensorData<Roomba::Sensor::DistanceTravelled>();
+
+    //auto distance = robot_controller->getDistanceTravelled();
     cout << "Distance travelled: " << distance.toString() << endl;
-    cout << "Angle travelled: " << robot_controller->getAngleTurned().toString() << endl;
+    auto angleTurned =
+        robot_controller->getSensorData<Roomba::Sensor::AngleTurned>();
+    cout << "Angle travelled: " << angleTurned.toString() << endl;
 
     // Drive backward
     cout << "Testing drive train: BACKWARD\n";
@@ -66,9 +71,11 @@ int main(int argc, char** argv) {
     this_thread::sleep_for(chrono::milliseconds(2000));
     robot_controller->stop();
 
-    distance = robot_controller->getDistanceTravelled();
-    cout << "Distance travelled: " << distance.toString() << endl;
-    cout << "Angle travelled: " << robot_controller->getAngleTurned().toString() << endl;
+    // distance = robot_controller->getDistanceTravelled();
+    // cout << "Distance travelled: " << distance.toString() << endl;
+    angleTurned =
+        robot_controller->getSensorData<Roomba::Sensor::AngleTurned>();
+    cout << "Angle travelled: " << angleTurned.toString() << endl;
 
     cout << "Complete\n";
 
