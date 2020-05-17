@@ -49,9 +49,9 @@ int main(int argc, char** argv) {
 
     cout << "Testing drive train: FORWARD\n";
     // Drive forward
-    int16_t velocity_mm_sec = 120;
-    robot_controller->drive(velocity_mm_sec, 100);
-    this_thread::sleep_for(chrono::milliseconds(2000));
+    int16_t velocity_mm_sec = 150;
+    robot_controller->drive(velocity_mm_sec, 0);
+    this_thread::sleep_for(chrono::milliseconds(4000));
     robot_controller->stop();
 
     auto distance =
@@ -61,21 +61,37 @@ int main(int argc, char** argv) {
     cout << "Distance travelled: " << distance.toString() << endl;
     auto angleTurned =
         robot_controller->getSensorData<Roomba::Sensor::AngleTurned>();
-    cout << "Angle travelled: " << angleTurned.toString() << endl;
+    cout << "Angle turned: " << angleTurned.toString() << endl;
 
     // Drive backward
     cout << "Testing drive train: BACKWARD\n";
 
     velocity_mm_sec = -velocity_mm_sec;
     robot_controller->drive(velocity_mm_sec, 0);
-    this_thread::sleep_for(chrono::milliseconds(2000));
+    this_thread::sleep_for(chrono::milliseconds(4000));
     robot_controller->stop();
 
-    // distance = robot_controller->getDistanceTravelled();
-    // cout << "Distance travelled: " << distance.toString() << endl;
+    distance =
+        robot_controller->getSensorData<Roomba::Sensor::DistanceTravelled>();
+    cout << "Distance travelled: " << distance.toString() << endl;
+
     angleTurned =
         robot_controller->getSensorData<Roomba::Sensor::AngleTurned>();
-    cout << "Angle travelled: " << angleTurned.toString() << endl;
+    cout << "Angle turned: " << angleTurned.toString() << endl;
+
+    cout << "Device stats\n";
+    cout << "---------------------------------------\n";
+    auto battery_voltage =
+        robot_controller->getSensorData<Roomba::Sensor::Voltage>();
+    cout << "Battery voltage: " << battery_voltage.toString() << endl;
+
+    auto current =
+        robot_controller->getSensorData<Roomba::Sensor::Current>();
+    cout << "Current: " << current.toString() << endl;
+
+    auto temperature =
+        robot_controller->getSensorData<Roomba::Sensor::Temperature>();
+    cout << "Temperature: " << temperature.toString() << endl;
 
     cout << "Complete\n";
 

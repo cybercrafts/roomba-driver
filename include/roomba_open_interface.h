@@ -79,11 +79,24 @@ inline int16_t From2sComplement(uint8_t bytes[2]){
     return value;
 }
 
+inline uint16_t Uint16From2sComplement(uint8_t bytes[2]){
+    uint16_t value = 0;
+    value = ((uint16_t) bytes[0] << 8) & 0xFF00 | (uint16_t) bytes[1];
+    return value;
+}
+
 inline void To2sComplementBytes(int16_t int_val, uint8_t bytes[2]){
     uint16_t high = int_val & 0xFF00;
     bytes[0] = high >> 8;
     bytes[1] = int_val & 0xFF;
 }
+
+inline void ToUint162sComplementBytes(uint16_t int_val, uint8_t bytes[2]){
+    uint16_t high = int_val & 0xFF00;
+    bytes[0] = high >> 8;
+    bytes[1] = int_val & 0xFF;
+}
+
 }
 
 } // end of namespace Roomba

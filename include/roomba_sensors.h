@@ -40,7 +40,7 @@ enum class PacketId : uint8_t {
     CHARGE_STATE = 21,
     VOLTAGE = 22,
     CURRENT = 23,
-    TEMP = 24,
+    TEMPERATURE = 24,
     CHARGE = 25,
     CAPACITY = 26,
     WALL_SIGNAL = 27,
@@ -78,7 +78,9 @@ enum class PacketId : uint8_t {
 
 
 struct Packet{
-    virtual uint8_t* getId() = 0;
+    uint8_t* getId(){
+        return (uint8_t*)&id;
+    }
     virtual uint8_t* getData() = 0;
     virtual int getDataSize() = 0;
     virtual std::string toString() = 0;
@@ -86,6 +88,32 @@ struct Packet{
         // Empty
     }
     PacketId id;
+};
+
+struct OneBytePacket : public Packet{
+    uint8_t* getData(){
+        return reinterpret_cast<uint8_t*>(&data);
+    }
+    int getDataSize() {
+        return 1;
+    }
+    virtual ~OneBytePacket() {
+        // Empty
+    }
+    int8_t data{0};
+};
+
+struct TwoBytePacket : public Packet{
+    uint8_t* getData(){
+        return reinterpret_cast<uint8_t*>(&data);
+    }
+    int getDataSize() {
+        return 2;
+    }
+    virtual ~TwoBytePacket() {
+        // Empty
+    }
+    uint8_t data[2]{0};
 };
 
 // struct BumpAndWheelDrop : public Packet{
@@ -106,9 +134,6 @@ struct Packet{
 struct OIMode : public Packet{
     OIMode(){
         id = PacketId::OI_MODE;
-    }
-    uint8_t* getId() override{
-        return reinterpret_cast<uint8_t*>(&id);
     }
     uint8_t* getData() override{
         return reinterpret_cast<uint8_t*>(&data);
@@ -141,18 +166,9 @@ struct OIMode : public Packet{
 };
 
 
-struct DistanceTravelled : public Packet{
+struct DistanceTravelled : public TwoBytePacket{
     DistanceTravelled(){
         id = PacketId::DISTANCE;
-    }
-    uint8_t* getId() override{
-        return reinterpret_cast<uint8_t*>(&id);
-    }
-    uint8_t* getData() override{
-        return reinterpret_cast<uint8_t*>(&data);
-    }
-    int getDataSize() override {
-        return 2;
     }
     int16_t getValue(){
         return Roomba::utils::From2sComplement(data);
@@ -162,21 +178,11 @@ struct DistanceTravelled : public Packet{
         ss << getValue() << " mm";
         return ss.str();
     }
-    uint8_t data[2]{0};
 };
 
-struct AngleTurned : public Packet{
+struct AngleTurned : public TwoBytePacket{
     AngleTurned(){
         id = PacketId::ANGLE;
-    }
-    uint8_t* getId() override{
-        return reinterpret_cast<uint8_t*>(&id);
-    }
-    uint8_t* getData() override{
-        return reinterpret_cast<uint8_t*>(&data);
-    }
-    int getDataSize() override {
-        return 2;
     }
     int16_t getValue(){
         return Roomba::utils::From2sComplement(data);
@@ -186,7 +192,48 @@ struct AngleTurned : public Packet{
         ss << getValue() << " degree";
         return ss.str();
     }
-    uint8_t data[2]{0};
+};
+
+struct Voltage : public TwoBytePacket{
+    Voltage(){
+        id = PacketId::VOLTAGE;
+    }
+    int16_t getValue(){
+        return Roomba::utils::From2sComplement(data);
+    }
+    std::string toString() override {
+        std::ostringstream ss;
+        ss << getValue()/1000.0 << " V";
+        return ss.str();
+    }
+};
+
+struct Current : public TwoBytePacket{
+    Current(){
+        id = PacketId::CURRENT;
+    }
+    int16_t getValue(){
+        return Roomba::utils::From2sComplement(data);
+    }
+    std::string toString() override {
+        std::ostringstream ss;
+        ss << getValue() << " mA";
+        return ss.str();
+    }
+};
+
+struct Temperature : public OneBytePacket{
+    Temperature(){
+        id = PacketId::TEMPERATURE;
+    }
+    int8_t getValue(){
+        return (int8_t) data;
+    }
+    std::string toString() override {
+        std::ostringstream ss;
+        ss << getValue() << " C";
+        return ss.str();
+    }
 };
 
 } // namespace Sensor

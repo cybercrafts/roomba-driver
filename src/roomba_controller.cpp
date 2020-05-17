@@ -356,6 +356,11 @@ RoombaController::drive(int16_t vel_in_mm_sec, int16_t turn_radius_in_mm){
     write(m_fd, &velocity[1], 1);
     write(m_fd, &radius[0], 1);
     write(m_fd, &radius[1], 1);
+
+    // Error handling in write failure
+    // TODO
+
+    return true;
 }
 
 uint16_t
