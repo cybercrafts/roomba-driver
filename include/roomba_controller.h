@@ -25,7 +25,6 @@ public:
 
     bool initialize();
     void terminate();
-    Roomba::Sensor::OIMode getCurrentOIMode();
     bool toSafeMode(){
         return changeOIMode(Roomba::OIMode::SAFE);
     }
@@ -33,13 +32,15 @@ public:
         return changeOIMode(Roomba::OIMode::FULL);
     }
 
-    uint16_t getRightEncoder();
     void reset();
+    void powerDown();
 
     bool drive(int16_t vel_in_mm_sec, int16_t turn_radius_in_mm);
     bool stop(){
         return drive(0, 0);
     }
+
+    bool spotClean();
 
     template <typename T>
     T getSensorData(){
@@ -54,7 +55,7 @@ public:
             ioctl(m_fd, FIONREAD, &bytes_available);
             if (bytes_available){
                 uint8_t bytes[2];
-                read(m_fd, sensor_pkt.getData(), sensor_pkt.getDataSize());
+                read(m_fd, sensor_pkt.getDataPtr(), sensor_pkt.getDataSize());
                 return sensor_pkt;
             }
             std::this_thread::sleep_for(std::chrono::milliseconds(25));
@@ -64,6 +65,9 @@ public:
         return sensor_pkt;
     }
 
+    bool getSensorData(
+        std::vector<std::unique_ptr<Roomba::Sensor::Packet>>& pkt_list);
+
 private:
     explicit RoombaController(int fd);
     static std::string ToString(const std::vector<uint8_t>& data);
@@ -72,7 +76,6 @@ private:
 
     bool startOI();
     void stopOI();
-    void powerDown();
     bool changeOIMode(Roomba::OIMode desired_mode);
 
     const int   m_fd{0};

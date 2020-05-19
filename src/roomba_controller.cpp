@@ -47,7 +47,7 @@ unique_ptr<RoombaController> RoombaController::NewInstance(
         if (bytes_available){
             rx_buffer.resize(bytes_available);
             auto n = read(fd, &rx_buffer[0], bytes_available);
-            cout << "Bytes available: " << bytes_available << " Read: " << n << endl;
+            //cout << "Bytes available: " << bytes_available << " Read: " << n << endl;
             cout << ToString(rx_buffer) << endl;
         }
         this_thread::sleep_for(chrono::milliseconds(25));
@@ -123,7 +123,7 @@ bool RoombaController::ConfigureSerial(int fd){
 
     // Just use the default for the following
     //tty_settings.c_cc[VTIME]    = 0;   /* inter-character timer unused */
-    //tty_settings.c_cc[VMIN]     = 1;   /* non-blocking read */
+    //tty_settings.c_cc[VMIN]     = 50;   /* non-blocking read */
 
     if (tcsetattr(fd, TCSANOW, &tty_settings) != 0) {
         perror("Error from tcsetattr: ");
@@ -148,13 +148,6 @@ RoombaController::initialize(){
         cout << "Error! Cannot send commands to the robot\n";
         return false;
     }
-
-    // // Change the color of the Power LED
-    // Roomba::OpCode cmd = Roomba::OpCode::LEDS;
-    // write(m_fd, &cmd, 1);
-    // uint8_t data = 4; write(m_fd, &data, 1);
-    // data = 0; write(m_fd, &data, 1);
-    // data = 255; write(m_fd, &data, 1);
 
     m_initialized = true;
     return true;
@@ -251,6 +244,24 @@ RoombaController::powerDown(){
     }
 }
 
+
+//------------------------------------------------------------------------------
+// spotClean
+//------------------------------------------------------------------------------
+
+bool
+RoombaController::spotClean(){
+    Roomba::OpCode cmd;
+    cmd = Roomba::OpCode::SPOT;
+    auto n = write(m_fd, &cmd, 1);
+    this_thread::sleep_for(chrono::milliseconds(50));
+    if ( n != 1 ){
+        perror("Error writing to the port ");
+        return false;
+    }
+    return true;
+}
+
 //------------------------------------------------------------------------------
 // reset
 //------------------------------------------------------------------------------
@@ -261,38 +272,28 @@ RoombaController::reset(){
     cmd = Roomba::OpCode::RESET;
     auto n = write(m_fd, &cmd, 1);
     this_thread::sleep_for(chrono::milliseconds(200));
-}
 
-//------------------------------------------------------------------------------
-// getCurrentOIMode
-//------------------------------------------------------------------------------
-
-Roomba::Sensor::OIMode
-RoombaController::getCurrentOIMode(){
-    Roomba::OpCode cmd = Roomba::OpCode::SENSORS;
-    Roomba::Sensor::OIMode sensor_pkt;
-
-    int n = write(m_fd, &cmd, 1);
-    n = write(m_fd, sensor_pkt.getId(), 1);
+    // Read the incoming data
+    // Read the response from the robot
     int bytes_available = 0;
     int retry_count = 5;
+    vector<uint8_t> rx_buffer;
     while(retry_count){
         ioctl(m_fd, FIONREAD, &bytes_available);
         if (bytes_available){
-            // Assert if this is more than 1
-            // TODO
-            read(m_fd, sensor_pkt.getData(), sensor_pkt.getDataSize());
-            return sensor_pkt;
+            rx_buffer.resize(bytes_available);
+            auto n = read(m_fd, &rx_buffer[0], bytes_available);
+            //cout << "Bytes available: " << bytes_available << " Read: " << n << endl;
+            cout << ToString(rx_buffer) << endl;
         }
-        this_thread::sleep_for(chrono::milliseconds(25));
+        this_thread::sleep_for(chrono::milliseconds(100));
+        bytes_available = 0;
         retry_count--;
     }
-
-    return sensor_pkt;
 }
 
 //------------------------------------------------------------------------------
-// getCurrentOIMode
+// changeOIMode
 //------------------------------------------------------------------------------
 
 bool
@@ -363,31 +364,95 @@ RoombaController::drive(int16_t vel_in_mm_sec, int16_t turn_radius_in_mm){
     return true;
 }
 
-uint16_t
-RoombaController::getRightEncoder()
-{
-    Roomba::OpCode cmd = Roomba::OpCode::SENSORS;
-    Roomba::Sensor::PacketId pkt_id = Roomba::Sensor::PacketId::RIGHT_ENC;
-    int n = write(m_fd, &cmd, 1);
-    n = write(m_fd, &pkt_id, 1);
-    this_thread::sleep_for(chrono::milliseconds(50));
+//------------------------------------------------------------------------------
+// getSensorData
+//------------------------------------------------------------------------------
 
-    int bytes_available = 0;
+bool
+RoombaController::getSensorData(
+    vector<unique_ptr<Roomba::Sensor::Packet>>& pkt_list){
+
+    // Prepare the data buffer for the sensor data
+    size_t buf_length = 0;
+    vector<uint8_t> tx_data;
+    tx_data.push_back((uint8_t)Roomba::OpCode::QUERY_LIST);
+    tx_data.push_back(pkt_list.size());
+    for (const auto& pkt_requested : pkt_list){
+        buf_length += pkt_requested->getDataSize();
+        tx_data.push_back(*pkt_requested->getId());
+    }
     vector<uint8_t> rx_buffer;
-    ioctl(m_fd, FIONREAD, &bytes_available);
-    if (bytes_available == 2){
-        //cout << "BYTES AVAILABLE: " << bytes_available << endl;
-        // Assert if this is more than 2
-        // TODO
-        rx_buffer.resize(bytes_available);
-        n = read(m_fd, &rx_buffer[0], bytes_available);
-        uint16_t encoder = 0;
-        encoder = rx_buffer[0];
-        encoder << 8;
-        encoder += rx_buffer[1];
-        return encoder;
+    rx_buffer.resize(buf_length);
+
+    // Now send the command
+    int bytes_sent = 0;
+    if
+    (
+        (bytes_sent = write(m_fd, &tx_data[0], tx_data.size())) !=
+        tx_data.size()
+    ){
+        perror("Error sending command: ");
+        return false;
+    }
+    //cout << "Bytes sent: " << bytes_sent << endl;
+
+    // Now wait for the response
+    int bytes_available = 0;
+    int retry_count = 5;
+    while(retry_count){
+        ioctl(m_fd, FIONREAD, &bytes_available);
+        if (bytes_available == rx_buffer.size()){
+            auto n = read(m_fd, &rx_buffer[0], rx_buffer.size());
+            //cout << "Bytes expected: " << rx_buffer.size() << " Read: " << n << endl;
+            if (n != rx_buffer.size()){
+                perror("Error reading response. ");
+                return false;
+            }
+            //cout << "Bytes read: " << n << " Retry: " <<  5 - retry_count << endl;
+            int offset = 0;
+            for ( const auto& pkt_requested : pkt_list){
+                memcpy(
+                    pkt_requested->getDataPtr(),
+                    &rx_buffer[offset],
+                    pkt_requested->getDataSize());
+                offset += pkt_requested->getDataSize();
+            }
+            return true;
+        }
+        //cout << "Bytes expected: " << rx_buffer.size() << " available: " << bytes_available << endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        retry_count--;
     }
 
-    return 0;
+    return false;
 }
+
+
+// uint16_t
+// RoombaController::getRightEncoder()
+// {
+//     Roomba::OpCode cmd = Roomba::OpCode::SENSORS;
+//     Roomba::Sensor::PacketId pkt_id = Roomba::Sensor::PacketId::RIGHT_ENC;
+//     int n = write(m_fd, &cmd, 1);
+//     n = write(m_fd, &pkt_id, 1);
+//     this_thread::sleep_for(chrono::milliseconds(50));
+
+//     int bytes_available = 0;
+//     vector<uint8_t> rx_buffer;
+//     ioctl(m_fd, FIONREAD, &bytes_available);
+//     if (bytes_available == 2){
+//         //cout << "BYTES AVAILABLE: " << bytes_available << endl;
+//         // Assert if this is more than 2
+//         // TODO
+//         rx_buffer.resize(bytes_available);
+//         n = read(m_fd, &rx_buffer[0], bytes_available);
+//         uint16_t encoder = 0;
+//         encoder = rx_buffer[0];
+//         encoder << 8;
+//         encoder += rx_buffer[1];
+//         return encoder;
+//     }
+
+//     return 0;
+// }
 

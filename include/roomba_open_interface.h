@@ -73,13 +73,13 @@ enum class ChargingState : uint8_t{
 };
 
 namespace utils{
-inline int16_t From2sComplement(uint8_t bytes[2]){
+inline int16_t From2sComplement(const uint8_t bytes[2]){
     int16_t value = 0;
     value = ((int16_t) bytes[0] << 8) & 0xFF00 | (int16_t) bytes[1];
     return value;
 }
 
-inline uint16_t Uint16From2sComplement(uint8_t bytes[2]){
+inline uint16_t Uint16From2sComplement(const uint8_t bytes[2]){
     uint16_t value = 0;
     value = ((uint16_t) bytes[0] << 8) & 0xFF00 | (uint16_t) bytes[1];
     return value;
