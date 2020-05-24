@@ -1,0 +1,210 @@
+#include <iostream>
+#include <thread>
+#include  <csignal>
+#include  <atomic>
+
+#include "roomba_controller.h"
+
+using namespace std;
+
+// Declare the global that indicates that our process has received a signal
+std::atomic<bool> g_ProcessInterrupted{false};
+
+extern "C" void signal_handler(int sig){
+    g_ProcessInterrupted = true;
+}
+
+//------------------------------------------------------------------------------
+//  Executes a Roomba command and collects logs
+//------------------------------------------------------------------------------
+int main(int argc, char** argv) {
+
+    // For now just use the clean
+    auto robot_controller = RoombaController::NewInstance("/dev/ttyUSB0");
+    if (!robot_controller){
+        cout << "Cannot create robot controller. Abort\n";
+        return -1;
+    }
+
+    if (!robot_controller->initialize()){
+        cout << "Cannot initialize Roomba. Abort\n";
+        return -1;
+    }
+
+    cout << "Roomba Initialized\n";
+
+    // Wait
+    this_thread::sleep_for(chrono::milliseconds(500));
+
+    // Get the current Mode
+    auto mode = robot_controller->getSensorData<Roomba::Sensor::OIMode>();
+    cout << "OI Mode: " << hex << to_string((uint8_t)mode.data) << endl;
+    // if (mode.data != Roomba::OIMode::PASSIVE){
+    //     // Something is wrong
+    //     cout << "Error! Cannot get mode from robot. Good bye\n";
+    //     return -1;
+    // }
+
+    // Print the current mode
+    cout << mode.toString() << endl;
+
+    bool run_logging = true;
+    vector<unique_ptr<Roomba::Sensor::Packet>> pkt_list;
+    pkt_list.push_back(
+        move(unique_ptr<Roomba::Sensor::Packet>(
+            new Roomba::Sensor::DistanceTravelled())));
+    pkt_list.push_back(
+        move(unique_ptr<Roomba::Sensor::Packet>(
+            new Roomba::Sensor::AngleTurned())));
+    pkt_list.push_back(
+        move(unique_ptr<Roomba::Sensor::Packet>(
+            new Roomba::Sensor::EncoderLeft())));
+    pkt_list.push_back(
+        move(unique_ptr<Roomba::Sensor::Packet>(
+            new Roomba::Sensor::EncoderRight())));
+    pkt_list.push_back(
+        move(unique_ptr<Roomba::Sensor::Packet>(
+            new Roomba::Sensor::LightBumper())));
+    pkt_list.push_back(
+        move(unique_ptr<Roomba::Sensor::Packet>(
+            new Roomba::Sensor::CliffLeftSignal())));
+    pkt_list.push_back(
+        move(unique_ptr<Roomba::Sensor::Packet>(
+            new Roomba::Sensor::CliffFrontLeftSignal())));
+    pkt_list.push_back(
+        move(unique_ptr<Roomba::Sensor::Packet>(
+            new Roomba::Sensor::CliffFrontRightSignal())));
+    pkt_list.push_back(
+        move(unique_ptr<Roomba::Sensor::Packet>(
+            new Roomba::Sensor::CliffRightSignal())));
+    pkt_list.push_back(
+        move(unique_ptr<Roomba::Sensor::Packet>(
+            new Roomba::Sensor::BumpAndWheelDrop())));
+    pkt_list.push_back(
+        move(unique_ptr<Roomba::Sensor::Packet>(
+            new Roomba::Sensor::LightBumpRightSignal())));
+
+    robot_controller->toSafeMode();
+    mode = robot_controller->getSensorData<Roomba::Sensor::OIMode>();
+    cout << mode.toString() << endl;
+
+    // Open the data file
+    // TODO
+
+    auto sensor_data_callback =
+        [&](const vector<unique_ptr<Roomba::Sensor::Packet>>& pkt_list) {
+
+        // For now just display the values
+    };
+
+    //robot_controller->streamSensorData(pkt_list, sensor_data_callback);
+
+    // Prepare the data buffer for the sensor data
+    size_t buf_length = 0;
+    vector<uint8_t> tx_data;
+    tx_data.push_back((uint8_t)Roomba::OpCode::STREAM);
+    tx_data.push_back(pkt_list.size());
+    for (const auto& pkt_requested : pkt_list){
+        buf_length += pkt_requested->getDataSize();
+        tx_data.push_back(*pkt_requested->getId());
+    }
+
+    cout << "RX Pkt buffer length: " << buf_length << "\n";
+    if (buf_length > 172){
+        // With 115200 bps Roomba cannot transmit more than 172
+        // bytes per 15 ms according to the following calculation
+        // from their OI Spec:
+        // It is up to you not to request more data than can be sent at the
+        // current baud rate in the 15 ms time slot. For example, at
+        // 115200 baud, a maximum of 172 bytes can be sent in 15 ms:
+        // 15 ms / 10 bits (8 data + start + stop) * 115200 = 172.8
+        // If more data is requested, the data stream will eventually
+        // become corrupted. This can be confirmed by checking the checksum.
+        cout << "Requested sensor packet length exceeds 172 bytes\n";
+        return false;
+    }
+
+    bool stop_processing = false;
+    auto rx_thread_func = [&](bool stop_processing){
+        vector<uint8_t> rx_buffer;
+        rx_buffer.resize(buf_length);
+
+        // Now send the command
+        int bytes_sent = 0;
+        if
+        (
+            (bytes_sent =
+                write(robot_controller->m_fd, &tx_data[0], tx_data.size())) !=
+            tx_data.size()
+        ){
+            perror("Error sending command: ");
+            return false;
+        }
+        //cout << "Bytes sent: " << bytes_sent << endl;
+
+        // Now wait for the response
+        int bytes_available = 0;
+        while(!stop_processing){
+            ioctl(robot_controller->m_fd, FIONREAD, &bytes_available);
+            cout << "Bytes available: " << bytes_available << "\n";
+            if (bytes_available){
+                rx_buffer.resize(bytes_available);
+                auto n =
+                    read(robot_controller->m_fd, &rx_buffer[0], rx_buffer.size());
+                //cout << "Bytes expected: " << rx_buffer.size() << " Read: " << n << endl;
+                if (n != rx_buffer.size()){
+                    perror("Error reading response. ");
+                    return false;
+                }
+                cout << "Bytes read: " << n << endl;
+                // int offset = 0;
+                // for ( const auto& pkt_requested : pkt_list){
+                //     memcpy(
+                //         pkt_requested->getDataPtr(),
+                //         &rx_buffer[offset],
+                //         pkt_requested->getDataSize());
+                //     offset += pkt_requested->getDataSize();
+                // }
+                // return true;
+            }
+            //cout << "Bytes expected: " << rx_buffer.size() << " available: " << bytes_available << endl;
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            if (g_ProcessInterrupted){
+                break;
+            }
+        }
+    };
+
+    // TODO
+    std::thread rx_thread(rx_thread_func, stop_processing);
+    while (!rx_thread.joinable());
+    cout << "Ready to process..." << endl;
+
+    std::signal(SIGINT, signal_handler);
+    std::signal(SIGABRT, signal_handler);
+
+    // Issue clean command
+    // TODO
+    //robot_controller->spotClean();
+
+    // Wait but check
+    int wait_seconds = 100;
+    while(!g_ProcessInterrupted && wait_seconds){
+        this_thread::sleep_for(chrono::milliseconds(1000));
+        wait_seconds--;
+    }
+
+    if (g_ProcessInterrupted){
+        cout << "Got interrupt\n";
+    }
+    stop_processing = true;
+    if (rx_thread.joinable()){
+        rx_thread.join();
+    }
+
+    // Stop
+    robot_controller->powerDown();
+    robot_controller->terminate();
+
+    return 0;
+}

@@ -244,7 +244,6 @@ RoombaController::powerDown(){
     }
 }
 
-
 //------------------------------------------------------------------------------
 // spotClean
 //------------------------------------------------------------------------------
@@ -253,6 +252,24 @@ bool
 RoombaController::spotClean(){
     Roomba::OpCode cmd;
     cmd = Roomba::OpCode::SPOT;
+    auto n = write(m_fd, &cmd, 1);
+    this_thread::sleep_for(chrono::milliseconds(50));
+    if ( n != 1 ){
+        perror("Error writing to the port ");
+        return false;
+    }
+    return true;
+}
+
+
+//------------------------------------------------------------------------------
+// seekDock
+//------------------------------------------------------------------------------
+
+bool
+RoombaController::seekDock(){
+    Roomba::OpCode cmd;
+    cmd = Roomba::OpCode::DOCK;
     auto n = write(m_fd, &cmd, 1);
     this_thread::sleep_for(chrono::milliseconds(50));
     if ( n != 1 ){
@@ -420,7 +437,88 @@ RoombaController::getSensorData(
             return true;
         }
         //cout << "Bytes expected: " << rx_buffer.size() << " available: " << bytes_available << endl;
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+        retry_count--;
+    }
+
+    return false;
+}
+
+//------------------------------------------------------------------------------
+// streamSensorData
+//------------------------------------------------------------------------------
+
+bool
+RoombaController::streamSensorData(
+    vector<unique_ptr<Roomba::Sensor::Packet>>& pkt_list,
+    std::function<void(const std::vector<std::unique_ptr<Roomba::Sensor::Packet>>&)> cb){
+
+    // Prepare the data buffer for the sensor data
+    size_t buf_length = 0;
+    vector<uint8_t> tx_data;
+    tx_data.push_back((uint8_t)Roomba::OpCode::STREAM);
+    tx_data.push_back(pkt_list.size());
+    for (const auto& pkt_requested : pkt_list){
+        buf_length += pkt_requested->getDataSize();
+        tx_data.push_back(*pkt_requested->getId());
+    }
+
+    cout << "RX Pkt buffer length: " << buf_length << "\n";
+    if (buf_length > 172){
+        // With 115200 bps Roomba cannot transmit more than 172
+        // bytes per 15 ms according to the following calculation
+        // from their OI Spec:
+        // It is up to you not to request more data than can be sent at the
+        // current baud rate in the 15 ms time slot. For example, at
+        // 115200 baud, a maximum of 172 bytes can be sent in 15 ms:
+        // 15 ms / 10 bits (8 data + start + stop) * 115200 = 172.8
+        // If more data is requested, the data stream will eventually
+        // become corrupted. This can be confirmed by checking the checksum.
+        cout << "Requested sensor packet length exceeds 172 bytes\n";
+        return false;
+    }
+
+    // auto rx_thread_func = [&]
+    vector<uint8_t> rx_buffer;
+    rx_buffer.resize(buf_length);
+
+    // Now send the command
+    int bytes_sent = 0;
+    if
+    (
+        (bytes_sent = write(m_fd, &tx_data[0], tx_data.size())) !=
+        tx_data.size()
+    ){
+        perror("Error sending command: ");
+        return false;
+    }
+    //cout << "Bytes sent: " << bytes_sent << endl;
+
+    // Now wait for the response
+    int bytes_available = 0;
+    int retry_count = 5;
+    while(retry_count){
+        ioctl(m_fd, FIONREAD, &bytes_available);
+        if (bytes_available == rx_buffer.size()){
+            auto n = read(m_fd, &rx_buffer[0], rx_buffer.size());
+            //cout << "Bytes expected: " << rx_buffer.size() << " Read: " << n << endl;
+            if (n != rx_buffer.size()){
+                perror("Error reading response. ");
+                return false;
+            }
+            //cout << "Bytes read: " << n << " Retry: " <<  5 - retry_count << endl;
+            int offset = 0;
+            for ( const auto& pkt_requested : pkt_list){
+                memcpy(
+                    pkt_requested->getDataPtr(),
+                    &rx_buffer[offset],
+                    pkt_requested->getDataSize());
+                offset += pkt_requested->getDataSize();
+            }
+            return true;
+        }
+        //cout << "Bytes expected: " << rx_buffer.size() << " available: " << bytes_available << endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
         retry_count--;
     }
 

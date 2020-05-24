@@ -149,7 +149,7 @@ int main(int argc, char** argv) {
 
     // Issue clean command
     // TODO
-    robot_controller->spotClean();
+    robot_controller->seekDock();
 
     // Wait but check
     int wait_seconds = 100;

@@ -10,3 +10,8 @@ https://www.irobotweb.com/-/media/MainSite/PDFs/About/STEM/Create/Create_2_Seria
 Using the following hardware:
 1. https://www.adafruit.com/product/2438
 2. DSD TECH USB to TTL converter: SH-U09C2 USB to TTL Adapter Built-in FTDI FT232RL
+
+## Resources
+
+1. Youtube channel: https://www.youtube.com/watch?v=bCwCSBFoYGw
+2. Docuemnts on the web
