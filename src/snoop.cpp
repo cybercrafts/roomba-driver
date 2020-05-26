@@ -58,31 +58,7 @@ int main(int argc, char** argv) {
             new Roomba::Sensor::AngleTurned())));
     pkt_list.push_back(
         move(unique_ptr<Roomba::Sensor::Packet>(
-            new Roomba::Sensor::EncoderLeft())));
-    pkt_list.push_back(
-        move(unique_ptr<Roomba::Sensor::Packet>(
-            new Roomba::Sensor::EncoderRight())));
-    pkt_list.push_back(
-        move(unique_ptr<Roomba::Sensor::Packet>(
-            new Roomba::Sensor::LightBumper())));
-    pkt_list.push_back(
-        move(unique_ptr<Roomba::Sensor::Packet>(
-            new Roomba::Sensor::CliffLeftSignal())));
-    pkt_list.push_back(
-        move(unique_ptr<Roomba::Sensor::Packet>(
-            new Roomba::Sensor::CliffFrontLeftSignal())));
-    pkt_list.push_back(
-        move(unique_ptr<Roomba::Sensor::Packet>(
-            new Roomba::Sensor::CliffFrontRightSignal())));
-    pkt_list.push_back(
-        move(unique_ptr<Roomba::Sensor::Packet>(
-            new Roomba::Sensor::CliffRightSignal())));
-    pkt_list.push_back(
-        move(unique_ptr<Roomba::Sensor::Packet>(
-            new Roomba::Sensor::BumpAndWheelDrop())));
-    pkt_list.push_back(
-        move(unique_ptr<Roomba::Sensor::Packet>(
-            new Roomba::Sensor::LightBumpRightSignal())));
+            new Roomba::Sensor::Voltage())));
 
     robot_controller->toSafeMode();
     mode = robot_controller->getSensorData<Roomba::Sensor::OIMode>();
@@ -97,8 +73,9 @@ int main(int argc, char** argv) {
         // For now just display the values
     };
 
-    //robot_controller->streamSensorData(pkt_list, sensor_data_callback);
+    robot_controller->setupSensorStream(pkt_list);
 
+#if 0
     // Prepare the data buffer for the sensor data
     size_t buf_length = 0;
     vector<uint8_t> tx_data;
@@ -179,30 +156,35 @@ int main(int argc, char** argv) {
     std::thread rx_thread(rx_thread_func, stop_processing);
     while (!rx_thread.joinable());
     cout << "Ready to process..." << endl;
+#endif
 
     std::signal(SIGINT, signal_handler);
     std::signal(SIGABRT, signal_handler);
 
-    // Issue clean command
-    // TODO
-    //robot_controller->spotClean();
-
     // Wait but check
-    int wait_seconds = 100;
+    int wait_seconds = 10000;
+
+    cout << "Starting the streamming" << endl;
+    robot_controller->startStream();
+
     while(!g_ProcessInterrupted && wait_seconds){
-        this_thread::sleep_for(chrono::milliseconds(1000));
+        vector<uint8_t> rx_buffer;
+        robot_controller->m_SerialPort->read(rx_buffer, 0);
+        if (rx_buffer.size()){
+            cout << "Bytes: " << rx_buffer.size() << "\n-----------------\n";
+            cout << SerialPort::ToString(rx_buffer);
+            cout << "----------------------------------------------\n";
+        }
+        this_thread::sleep_for(chrono::milliseconds(15));
         wait_seconds--;
     }
 
     if (g_ProcessInterrupted){
         cout << "Got interrupt\n";
     }
-    stop_processing = true;
-    if (rx_thread.joinable()){
-        rx_thread.join();
-    }
 
     // Stop
+    robot_controller->stopStream();
     robot_controller->powerDown();
     robot_controller->terminate();
 

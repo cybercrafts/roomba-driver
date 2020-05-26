@@ -22,8 +22,24 @@ int main(int argc, char** argv) {
     // Wait
     this_thread::sleep_for(chrono::milliseconds(500));
 
-    // robot_controller->reset();
-    // return -1;
+    cout << "Switching to FULL mode\n";
+    auto status = robot_controller->toFullMode();
+    auto mode = robot_controller->getSensorData<Roomba::Sensor::OIMode>();
+    cout << mode.toString() << endl;
+
+    cout << "Testing drive train: FORWARD\n";
+    // Drive forward
+    int16_t velocity_mm_sec = -100;
+    robot_controller->drive(velocity_mm_sec, 0);
+    this_thread::sleep_for(chrono::milliseconds(1500));
+    robot_controller->stop();
+
+    auto distance =
+        robot_controller->getSensorData<Roomba::Sensor::DistanceTravelled>();
+    cout << "Distance: " << distance.toString() << endl;
+    auto angleTurned =
+        robot_controller->getSensorData<Roomba::Sensor::AngleTurned>();
+    cout << "Angle: " << angleTurned.toString() << endl;
 
     cout << "Device stats\n";
     cout << "---------------------------------------\n";

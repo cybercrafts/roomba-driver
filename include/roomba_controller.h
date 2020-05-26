@@ -13,6 +13,7 @@
 #include <unistd.h>  /* UNIX standard function definitions */
 #include <fcntl.h>   /* File control definitions */
 
+#include "serialport.h"
 #include "roomba_open_interface.h"
 #include "roomba_sensors.h"
 
@@ -66,21 +67,25 @@ public:
         Roomba::OpCode cmd = Roomba::OpCode::SENSORS;
         T sensor_pkt;
 
-        int n = write(m_fd, &cmd, 1);
-        n = write(m_fd, sensor_pkt.getId(), 1);
-        int bytes_available = 0;
-        int retry_count = 5;
-        while(retry_count){
-            ioctl(m_fd, FIONREAD, &bytes_available);
-            if (bytes_available){
-                uint8_t bytes[2];
-                read(m_fd, sensor_pkt.getDataPtr(), sensor_pkt.getDataSize());
+        int n = m_SerialPort->write((uint8_t*)&cmd, 1);
+        n = m_SerialPort->write(sensor_pkt.getId(), 1);
+
+        int bytes_expected = sensor_pkt.getDataSize();
+        int retry_count = 0;
+        while (m_SerialPort->bytes_available() == 0){
+            std::this_thread::sleep_for(std::chrono::milliseconds(15));
+            retry_count++;
+            if (retry_count > 5){
+                std::cout << "No data available to read\n";
+                // Need to figure out how to best send the error
                 return sensor_pkt;
             }
-            std::this_thread::sleep_for(std::chrono::milliseconds(25));
-            //std::cout << "Retry...\n";
-            retry_count--;
         }
+        int bytes_received =
+            m_SerialPort->read(
+                sensor_pkt.getDataPtr(),
+                sensor_pkt.getDataSize()
+        );
 
         return sensor_pkt;
     }
@@ -90,22 +95,43 @@ public:
         std::vector<std::unique_ptr<Roomba::Sensor::Packet>>& pkt_list);
 
     // streamSensorData
-    bool streamSensorData(
-        std::vector<std::unique_ptr<Roomba::Sensor::Packet>>& pkt_list,
-        std::function<void(const std::vector<std::unique_ptr<Roomba::Sensor::Packet>>&)> cb
+    bool setupSensorStream(
+        std::vector<std::unique_ptr<Roomba::Sensor::Packet>>& pkt_list
     );
 
-private:
-    explicit RoombaController(int fd);
-    static std::string ToString(const std::vector<uint8_t>& data);
+    bool startStream(){
+        Roomba::OpCode cmd;
+        cmd = Roomba::OpCode::TOGGLE_STREAM;
+        auto n = m_SerialPort->write((uint8_t*)&cmd, 1);
+        uint8_t start = 1;
+        n = m_SerialPort->write((uint8_t*)&start, 1);
 
-    static bool ConfigureSerial(int fd);
+        return true;
+    }
+
+    bool stopStream(){
+        Roomba::OpCode cmd;
+        cmd = Roomba::OpCode::TOGGLE_STREAM;
+        auto n = m_SerialPort->write((uint8_t*)&cmd, 1);
+        uint8_t stop = 0;
+        n = m_SerialPort->write((uint8_t*)&stop, 1);
+
+        return true;
+    }
+
+
+private:
+    explicit RoombaController(std::unique_ptr<SerialPort> serial_port);
+    //static std::string ToString(const std::vector<uint8_t>& data);
+
+    //static bool ConfigureSerial(int fd);
 
     bool startOI();
     void stopOI();
     bool changeOIMode(Roomba::OIMode desired_mode);
 
 public:
-    const int   m_fd{0};
-    bool        m_initialized{false};
+    //const int   m_fd{0};
+    std::unique_ptr<SerialPort>     m_SerialPort{nullptr};
+    bool                            m_initialized{false};
 };
