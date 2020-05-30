@@ -61,6 +61,29 @@ public:
     // seekDock
     bool seekDock();
 
+    void getSensorData(Roomba::Sensor::Packet* pkt){
+        Roomba::OpCode cmd = Roomba::OpCode::SENSORS;
+
+        int n = m_SerialPort->write((uint8_t*)&cmd, 1);
+        n = m_SerialPort->write(pkt->getId(), 1);
+
+        int bytes_expected = pkt->getDataSize();
+        int retry_count = 0;
+        while (m_SerialPort->bytes_available() == 0){
+            std::this_thread::sleep_for(std::chrono::milliseconds(15));
+            retry_count++;
+            if (retry_count > 5){
+                std::cout << "No data available to read\n";
+                // Need to figure out how to best send the error
+                return;
+            }
+        }
+        int bytes_received =
+            m_SerialPort->read(
+                pkt->getDataPtr(),
+                pkt->getDataSize()
+        );
+    }
     // getSensorData
     template <typename T>
     T getSensorData(){
@@ -68,15 +91,18 @@ public:
         T sensor_pkt;
 
         int n = m_SerialPort->write((uint8_t*)&cmd, 1);
-        n = m_SerialPort->write(sensor_pkt.getId(), 1);
+        uint8_t pkt_id = (uint8_t)sensor_pkt.getPktId();
+        n = m_SerialPort->write(&pkt_id, 1);
 
         int bytes_expected = sensor_pkt.getDataSize();
         int retry_count = 0;
         while (m_SerialPort->bytes_available() == 0){
             std::this_thread::sleep_for(std::chrono::milliseconds(15));
             retry_count++;
-            if (retry_count > 5){
-                std::cout << "No data available to read\n";
+            if (retry_count > 50){
+                std::cout
+                    << "Sensor: " << std::to_string(pkt_id)
+                    << " No data available to read\n";
                 // Need to figure out how to best send the error
                 return sensor_pkt;
             }

@@ -73,6 +73,10 @@ int main(int argc, char** argv) {
         robot_controller->getSensorData<Roomba::Sensor::BatteryCapacity>();
     cout << battery_capacity.toString() << endl;
 
+    auto battery_charge =
+        robot_controller->getSensorData<Roomba::Sensor::BatteryCharge>();
+    cout << battery_charge.toString() << endl;
+
     auto current =
         robot_controller->getSensorData<Roomba::Sensor::Current>();
     cout << current.toString() << endl;

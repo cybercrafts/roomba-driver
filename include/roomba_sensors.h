@@ -4,6 +4,8 @@
 #include <sstream>
 #include <cstdint>
 #include <cstring>
+#include <memory>
+#include <map>
 
 #include "roomba_open_interface.h"
 
@@ -76,81 +78,138 @@ enum class PacketId : uint8_t {
     NUM = 52
 };
 
+const std::map<PacketId, uint8_t> PacketSizeList = {
+    // State
+    {PacketId::OI_MODE, 1},
+    {PacketId::LIGHT, 1},
+    {PacketId::BUMP_WHEELDROP, 1},
+    // Battery related
+    {PacketId::TEMPERATURE, 1},
+    {PacketId::VOLTAGE, 2},
+    {PacketId::CURRENT, 2},
+    {PacketId::CAPACITY, 2},
+    {PacketId::CHARGE, 2},
+
+    // Motion
+    {PacketId::DISTANCE, 2},
+    {PacketId::ANGLE, 2},
+    {PacketId::RIGHT_ENC, 2},
+    {PacketId::LEFT_ENC, 2},
+
+    // Cliff detection
+    {PacketId::CLIFF_LEFT_SIGNAL, 2},
+    {PacketId::CLIFF_FRONT_LEFT_SIGNAL, 2},
+    {PacketId::CLIFF_FRONT_RIGHT_SIGNAL, 2},
+    {PacketId::CLIFF_RIGHT_SIGNAL, 2},
+
+    // Bumper state
+    {PacketId::LIGHT_RIGHT, 2},
+    {PacketId::LIGHT_FRONT_RIGHT, 2},
+    {PacketId::LIGHT_CENTER_RIGHT, 2},
+    {PacketId::LIGHT_CENTER_LEFT, 2},
+    {PacketId::LIGHT_FRONT_LEFT, 2},
+    {PacketId::LIGHT_LEFT, 2},
+};
 
 struct Packet{
     uint8_t* const getId() const{
         return (uint8_t*)&id;
     }
-    virtual uint8_t* getDataPtr() = 0;
-    virtual int getDataSize() const = 0;
-    virtual std::string toString() const = 0;
+    PacketId getPktId() const {
+        return id;
+    }
+    uint8_t* getDataPtr(){
+        return data;
+    }
+    int getDataSize() const {
+        return PacketSizeList.at(id);
+    }
+    virtual std::string toString() const {
+        std::ostringstream ss;
+        ss << (int) *data;
+        return ss.str();
+    }
+
+    Packet& operator=(const Packet& other){
+        id = other.id;
+        memcpy(data, other.data, PacketSizeList.at(id));
+        return *this;
+    }
+    Packet() = delete;
     virtual ~Packet() {
-        // Empty
+        if (m_data_allocated){
+            free(data);
+        }
     }
 protected:
     // Can't make the id constant as that will prevent the assignment
     // or copy construction
     PacketId id;
     explicit Packet(PacketId pkt_id) : id(pkt_id){
+        data =
+            reinterpret_cast<uint8_t*>(
+                malloc(sizeof(uint8_t)*PacketSizeList.at(id)));
+        m_data_allocated = true;
+    }
+    explicit Packet(PacketId pkt_id, uint8_t* data_ptr)
+        : id(pkt_id)
+        , data(data_ptr)
+        , m_data_allocated(false){
         // Empty
     }
+
+    bool m_data_allocated{false};
+    uint8_t* data{nullptr};
 };
 
-struct OneBytePacket : public Packet{
-    uint8_t* getDataPtr(){
-        return reinterpret_cast<uint8_t*>(&data);
-    }
-    int getDataSize() const override{
-        return 1;
-    }
-    virtual ~OneBytePacket() {
-        // Empty
-    }
-    OneBytePacket& operator=(const OneBytePacket& other){
-        Packet::id = other.id;
-        data = other.data;
-        return *this;
-    }
-protected:
-    explicit OneBytePacket(PacketId pkt_id) : Packet(pkt_id){
-        // Empty
-    }
-    int8_t data{0};
-};
+std::unique_ptr<Packet> CreateSensorPacket(PacketId, uint8_t*);
 
-struct TwoBytePacket : public Packet{
-    uint8_t* getDataPtr(){
-        return reinterpret_cast<uint8_t*>(&data);
+struct UnsignedValuePkt : public Packet{
+    uint16_t getValue() const{
+        return Roomba::utils::From2sComplement(data);
     }
-    int getDataSize() const override{
-        return 2;
-    }
-    virtual ~TwoBytePacket() {
-        // Empty
-    }
-    TwoBytePacket& operator=(const TwoBytePacket& other){
-        Packet::id = other.id;
-        data[0] = other.data[0];
-        data[1] = other.data[1];
-        return *this;
-    }
-
-protected:
-    explicit TwoBytePacket(PacketId pkt_id) : Packet(pkt_id){
-        // Empty
-    }
-    uint8_t data[2]{0};
-};
-
-struct OIMode : public OneBytePacket{
-    OIMode() : OneBytePacket(PacketId::OI_MODE){
-    }
-    uint8_t* getDataPtr() override{
-        return reinterpret_cast<uint8_t*>(&data);
-    }
-
     std::string toString() const override {
-        Roomba::OIMode mode = (Roomba::OIMode) data;
+        std::ostringstream ss;
+        ss << getValue();
+        return ss.str();
+    }
+protected:
+    UnsignedValuePkt(PacketId id) : Packet(id){
+    }
+    UnsignedValuePkt(PacketId id, uint8_t* data_ptr)
+        : Packet(id, data_ptr){
+    }
+};
+
+struct SignedValuePkt : public Packet{
+    int16_t getValue() const{
+        return Roomba::utils::From2sComplement(data);
+    }
+    std::string toString() const override {
+        std::ostringstream ss;
+        ss << getValue();
+        return ss.str();
+    }
+protected:
+    SignedValuePkt(PacketId id) : Packet(id){
+    }
+    SignedValuePkt(PacketId id, uint8_t* data_ptr)
+        : Packet(id, data_ptr){
+    }
+};
+
+struct OIMode : public Packet{
+    OIMode() : Packet(PacketId::OI_MODE){
+    }
+    OIMode(uint8_t* data_ptr)
+        : Packet(PacketId::OI_MODE, data_ptr){
+    }
+
+    Roomba::OIMode getValue(){
+        return (Roomba::OIMode) *data;
+    }
+    std::string toString() const override {
+        Roomba::OIMode mode = (Roomba::OIMode) *data;
         switch (mode){
             case Roomba::OIMode::OFF:
                 return "OI Mode: OFF";
@@ -169,59 +228,37 @@ struct OIMode : public OneBytePacket{
             break;
         }
     }
-    Roomba::OIMode data{Roomba::OIMode::UNAVAILABLE};
 };
 
-struct EncoderLeft : public TwoBytePacket{
-    EncoderLeft() : TwoBytePacket(PacketId::DISTANCE){
+struct EncoderLeft : public SignedValuePkt{
+    EncoderLeft() : SignedValuePkt(PacketId::LEFT_ENC){
     }
-    int16_t getValue() const{
-        return Roomba::utils::From2sComplement(data);
-    }
-    std::string toString() const override {
-        std::ostringstream ss;
-        ss << getValue();
-        return ss.str();
+    EncoderLeft(uint8_t* data_ptr)
+        : SignedValuePkt(PacketId::LEFT_ENC, data_ptr){
     }
 };
 
-struct EncoderRight : public TwoBytePacket{
-    EncoderRight() : TwoBytePacket(PacketId::DISTANCE){
+struct EncoderRight : public SignedValuePkt{
+    EncoderRight() : SignedValuePkt(PacketId::RIGHT_ENC){
     }
-    int16_t getValue() const{
-        return Roomba::utils::From2sComplement(data);
-    }
-    std::string toString() const override {
-        std::ostringstream ss;
-        ss << getValue();
-        return ss.str();
+    EncoderRight(uint8_t* data_ptr)
+        : SignedValuePkt(PacketId::RIGHT_ENC, data_ptr){
     }
 };
 
-
-struct DistanceTravelled : public TwoBytePacket{
-    DistanceTravelled() : TwoBytePacket(PacketId::DISTANCE){
+struct DistanceTravelled : public SignedValuePkt{
+    DistanceTravelled() : SignedValuePkt(PacketId::DISTANCE){
     }
-    int16_t getValue() const{
-        return Roomba::utils::From2sComplement(data);
-    }
-    std::string toString() const override {
-        std::ostringstream ss;
-        ss << getValue();
-        return ss.str();
+    DistanceTravelled(uint8_t* data_ptr)
+        : SignedValuePkt(PacketId::DISTANCE, data_ptr){
     }
 };
 
-struct AngleTurned : public TwoBytePacket{
-    AngleTurned() : TwoBytePacket(PacketId::ANGLE){
+struct AngleTurned : public SignedValuePkt{
+    AngleTurned() : SignedValuePkt(PacketId::ANGLE){
     }
-    int16_t getValue() const{
-        return Roomba::utils::From2sComplement(data);
-    }
-    std::string toString() const override {
-        std::ostringstream ss;
-        ss << getValue();
-        return ss.str();
+    AngleTurned(uint8_t* data_ptr)
+        : SignedValuePkt(PacketId::ANGLE, data_ptr){
     }
 };
 
@@ -229,79 +266,91 @@ struct AngleTurned : public TwoBytePacket{
 // Cliff signals
 //------------------------------------------------------------------------------
 
-struct CliffLeftSignal : public TwoBytePacket{
-    CliffLeftSignal() : TwoBytePacket(PacketId::CLIFF_LEFT_SIGNAL){
+struct CliffLeftSignal : public UnsignedValuePkt{
+    CliffLeftSignal() : UnsignedValuePkt(PacketId::CLIFF_LEFT_SIGNAL){
     }
-    uint16_t getValue() const{
-        return Roomba::utils::From2sComplement(data);
-    }
-    std::string toString() const override {
-        std::ostringstream ss;
-        ss << (int) getValue();
-        return ss.str();
+    CliffLeftSignal(uint8_t* data_ptr)
+        : UnsignedValuePkt(PacketId::CLIFF_LEFT_SIGNAL, data_ptr){
     }
 };
 
-struct CliffFrontLeftSignal : public TwoBytePacket{
-    CliffFrontLeftSignal() : TwoBytePacket(PacketId::CLIFF_FRONT_LEFT_SIGNAL){
+struct CliffFrontLeftSignal : public UnsignedValuePkt{
+    CliffFrontLeftSignal() : UnsignedValuePkt(PacketId::CLIFF_FRONT_LEFT_SIGNAL){
     }
-    uint16_t getValue() const{
-        return Roomba::utils::From2sComplement(data);
-    }
-    std::string toString() const override {
-        std::ostringstream ss;
-        ss << (int) getValue();
-        return ss.str();
+    CliffFrontLeftSignal(uint8_t* data_ptr)
+        : UnsignedValuePkt(PacketId::CLIFF_FRONT_LEFT_SIGNAL, data_ptr){
     }
 };
 
-struct CliffFrontRightSignal : public TwoBytePacket{
-    CliffFrontRightSignal() : TwoBytePacket(PacketId::CLIFF_FRONT_RIGHT_SIGNAL){
+struct CliffFrontRightSignal : public UnsignedValuePkt{
+    CliffFrontRightSignal() : UnsignedValuePkt(PacketId::CLIFF_FRONT_RIGHT_SIGNAL){
     }
-    uint16_t getValue() const{
-        return Roomba::utils::From2sComplement(data);
-    }
-    std::string toString() const override {
-        std::ostringstream ss;
-        ss << (int) getValue();
-        return ss.str();
+    CliffFrontRightSignal(uint8_t* data_ptr)
+        : UnsignedValuePkt(PacketId::CLIFF_FRONT_RIGHT_SIGNAL, data_ptr){
     }
 };
 
-struct CliffRightSignal : public TwoBytePacket{
-    CliffRightSignal() : TwoBytePacket(PacketId::CLIFF_RIGHT_SIGNAL){
+struct CliffRightSignal : public UnsignedValuePkt{
+    CliffRightSignal() : UnsignedValuePkt(PacketId::CLIFF_RIGHT_SIGNAL){
     }
-    uint16_t getValue() const{
-        return Roomba::utils::From2sComplement(data);
-    }
-    std::string toString() const override {
-        std::ostringstream ss;
-        ss << (int) getValue();
-        return ss.str();
+    CliffRightSignal(uint8_t* data_ptr)
+        : UnsignedValuePkt(PacketId::CLIFF_RIGHT_SIGNAL, data_ptr){
     }
 };
 
 //------------------------------------------------------------------------------
 //  Bump Signals
 //------------------------------------------------------------------------------
-struct LightBumpRightSignal : public TwoBytePacket{
-    LightBumpRightSignal() : TwoBytePacket(PacketId::LIGHT_RIGHT){
+struct LightBumpRightSignal : public UnsignedValuePkt{
+    LightBumpRightSignal() : UnsignedValuePkt(PacketId::LIGHT_RIGHT){
     }
-    uint16_t getValue() const{
-        return Roomba::utils::From2sComplement(data);
-    }
-    std::string toString() const override {
-        std::ostringstream ss;
-        ss << (int) getValue();
-        return ss.str();
+    LightBumpRightSignal(uint8_t* data_ptr)
+        : UnsignedValuePkt(PacketId::LIGHT_RIGHT, data_ptr){
     }
 };
 
-struct LightBumper : public OneBytePacket{
-    LightBumper() : OneBytePacket(PacketId::LIGHT){
+struct LightBumpFrontRightSignal : public UnsignedValuePkt{
+    LightBumpFrontRightSignal() : UnsignedValuePkt(PacketId::LIGHT_FRONT_RIGHT){
+    }
+    LightBumpFrontRightSignal(uint8_t* data_ptr)
+        : UnsignedValuePkt(PacketId::LIGHT_FRONT_RIGHT, data_ptr){
+    }
+};
+struct LightBumpCenterRightSignal : public UnsignedValuePkt{
+    LightBumpCenterRightSignal() : UnsignedValuePkt(PacketId::LIGHT_CENTER_RIGHT){
+    }
+    LightBumpCenterRightSignal(uint8_t* data_ptr)
+        : UnsignedValuePkt(PacketId::LIGHT_CENTER_RIGHT, data_ptr){
+    }
+};
+struct LightBumpCenterLeftSignal : public UnsignedValuePkt{
+    LightBumpCenterLeftSignal() : UnsignedValuePkt(PacketId::LIGHT_CENTER_LEFT){
+    }
+    LightBumpCenterLeftSignal(uint8_t* data_ptr)
+        : UnsignedValuePkt(PacketId::LIGHT_CENTER_LEFT, data_ptr){
+    }
+};
+struct LightBumpFrontLeftSignal : public UnsignedValuePkt{
+    LightBumpFrontLeftSignal() : UnsignedValuePkt(PacketId::LIGHT_FRONT_LEFT){
+    }
+    LightBumpFrontLeftSignal(uint8_t* data_ptr)
+        : UnsignedValuePkt(PacketId::LIGHT_FRONT_LEFT, data_ptr){
+    }
+};
+
+struct LightBumpLeftSignal : public UnsignedValuePkt{
+    LightBumpLeftSignal() : UnsignedValuePkt(PacketId::LIGHT_LEFT){
+    }
+    LightBumpLeftSignal(uint8_t* data_ptr)
+        : UnsignedValuePkt(PacketId::LIGHT_LEFT, data_ptr){
+    }
+};
+
+struct LightBumper : public Packet{
+    LightBumper() : Packet(PacketId::LIGHT){
     }
     uint8_t getValue() const{
-        return data;
+        return *data;
     }
     std::string toString() const override {
         char data[] = "............";
@@ -336,11 +385,11 @@ struct LightBumper : public OneBytePacket{
 };
 
 
-struct Voltage : public TwoBytePacket{
-    Voltage() : TwoBytePacket(PacketId::VOLTAGE){
+struct Voltage : public SignedValuePkt{
+    Voltage() : SignedValuePkt(PacketId::VOLTAGE){
     }
-    int16_t getValue() const{
-        return Roomba::utils::From2sComplement(data);
+    Voltage(uint8_t* data_ptr)
+        : SignedValuePkt(PacketId::VOLTAGE, data_ptr){
     }
     std::string toString() const override {
         std::ostringstream ss;
@@ -349,11 +398,11 @@ struct Voltage : public TwoBytePacket{
     }
 };
 
-struct Current : public TwoBytePacket{
-    Current() : TwoBytePacket(PacketId::CURRENT){
+struct Current : public SignedValuePkt{
+    Current() : SignedValuePkt(PacketId::CURRENT){
     }
-    int16_t getValue() const{
-        return Roomba::utils::From2sComplement(data);
+    Current(uint8_t* data_ptr)
+        : SignedValuePkt(PacketId::CURRENT, data_ptr){
     }
     std::string toString() const override {
         std::ostringstream ss;
@@ -362,11 +411,11 @@ struct Current : public TwoBytePacket{
     }
 };
 
-struct BatteryCapacity : public TwoBytePacket{
-    BatteryCapacity() : TwoBytePacket(PacketId::CAPACITY){
+struct BatteryCapacity : public UnsignedValuePkt{
+    BatteryCapacity() : UnsignedValuePkt(PacketId::CAPACITY){
     }
-    uint16_t getValue() const{
-        return Roomba::utils::From2sComplement(data);
+    BatteryCapacity(uint8_t* data_ptr)
+        : UnsignedValuePkt(PacketId::CAPACITY, data_ptr){
     }
     std::string toString() const override {
         std::ostringstream ss;
@@ -375,24 +424,39 @@ struct BatteryCapacity : public TwoBytePacket{
     }
 };
 
-struct Temperature : public OneBytePacket{
-    Temperature() : OneBytePacket(PacketId::TEMPERATURE){
+struct BatteryCharge : public UnsignedValuePkt{
+    BatteryCharge() : UnsignedValuePkt(PacketId::CHARGE){
     }
-    int8_t getValue() const{
-        return (int8_t) data;
+    BatteryCharge(uint8_t* data_ptr)
+        : UnsignedValuePkt(PacketId::CHARGE, data_ptr){
     }
     std::string toString() const override {
         std::ostringstream ss;
-        ss << "Battery temperature: " << std::to_string(getValue()) << " C";
+        ss << "Battery charge: " << getValue() << " mAh";
         return ss.str();
     }
 };
 
-struct BumpAndWheelDrop : public OneBytePacket{
-    BumpAndWheelDrop() : OneBytePacket(PacketId::BUMP_WHEELDROP){
+struct Temperature : public Packet{
+    Temperature() : Packet(PacketId::TEMPERATURE){
+    }
+    int8_t getValue() const{
+        return (int8_t) *data;
+    }
+    std::string toString() const override {
+        std::ostringstream ss;
+        ss
+            << "Battery temperature: " << std::to_string(getValue())
+            << " C";
+        return ss.str();
+    }
+};
+
+struct BumpAndWheelDrop : public Packet{
+    BumpAndWheelDrop() : Packet(PacketId::BUMP_WHEELDROP){
     }
     uint8_t getValue() const{
-        return (uint8_t) data;
+        return (uint8_t) *data;
     }
     std::string toString() const override {
         char data[] = "0000";
@@ -405,7 +469,6 @@ struct BumpAndWheelDrop : public OneBytePacket{
         return data;
     }
 };
-
 
 } // namespace Sensor
 } // namespace Roomba

@@ -38,12 +38,11 @@ int main(int argc, char** argv) {
 
     // Get the current Mode
     auto mode = robot_controller->getSensorData<Roomba::Sensor::OIMode>();
-    cout << "OI Mode: " << hex << to_string((uint8_t)mode.data) << endl;
-    // if (mode.data != Roomba::OIMode::PASSIVE){
-    //     // Something is wrong
-    //     cout << "Error! Cannot get mode from robot. Good bye\n";
-    //     return -1;
-    // }
+    if (mode.getValue() != Roomba::OIMode::PASSIVE){
+        // Something is wrong
+        cout << "Error! Cannot get mode from robot. Good bye\n";
+        return -1;
+    }
 
     // Print the current mode
     cout << mode.toString() << endl;
@@ -56,9 +55,9 @@ int main(int argc, char** argv) {
     pkt_list.push_back(
         move(unique_ptr<Roomba::Sensor::Packet>(
             new Roomba::Sensor::AngleTurned())));
-    pkt_list.push_back(
-        move(unique_ptr<Roomba::Sensor::Packet>(
-            new Roomba::Sensor::Voltage())));
+    // pkt_list.push_back(
+    //     move(unique_ptr<Roomba::Sensor::Packet>(
+    //         new Roomba::Sensor::Voltage())));
 
     robot_controller->toSafeMode();
     mode = robot_controller->getSensorData<Roomba::Sensor::OIMode>();
