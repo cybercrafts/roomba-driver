@@ -23,6 +23,9 @@ target_link_libraries(dock serialport pthread)
 add_executable(undock undock.cpp)
 target_link_libraries(undock serialport pthread)
 
+add_executable(turn_off turn_off.cpp)
+target_link_libraries(turn_off serialport pthread)
+
 add_executable(snoop snoop.cpp)
 target_link_libraries(snoop serialport pthread)
 

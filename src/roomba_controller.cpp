@@ -40,23 +40,38 @@ unique_ptr<RoombaController> RoombaController::NewInstance(
 
     // Flush the incoming port
     int hit_count = 0;
-    while (hit_count < 10){
+    int bytes_read = 0;
+    int slience_counter = 0;
+    while (hit_count < 20){
         vector<uint8_t> rx_buffer;
         serial_port->read(rx_buffer, 0);
         if (rx_buffer.size()){
-            //cout << "Bytes: " << rx_buffer.size() << "\n-----------------" << endl;
+            bytes_read += rx_buffer.size();
             cout << SerialPort::ToString(rx_buffer);
-            //cout << "----------------------------------------------\n";
+            rx_buffer.clear();
+            slience_counter = 0;
+        }
+        else{
+            slience_counter++;
         }
         hit_count++;
         std::this_thread::sleep_for(std::chrono::milliseconds(25));
-        //cout << "Hit count: " << hit_count << endl;
     }
 
     cout << endl;
     cout << "Serial port created. Initializing controller\n";
+
+    cout
+        << "Slience count: " << slience_counter
+        << " Bytes read: " << bytes_read
+        << endl;
+
     // Create the new object
     auto new_instance = new RoombaController(move(serial_port));
+
+    auto mode = new_instance->getSensorData<Roomba::Sensor::OIMode>();
+    cout << "Mode after NewInstance: " << mode.toString()<< endl;
+
     return unique_ptr<RoombaController>(new_instance);
 }
 
@@ -65,7 +80,6 @@ RoombaController::RoombaController(std::unique_ptr<SerialPort> serial_port)
 }
 
 RoombaController::~RoombaController(){
-    //close(m_fd);
 }
 
 //------------------------------------------------------------------------------
@@ -84,6 +98,9 @@ RoombaController::initialize(){
         return false;
     }
 
+    auto mode = getSensorData<Roomba::Sensor::OIMode>();
+    cout << "Mode after Iitialize: " << mode.toString()<< endl;
+
     m_initialized = true;
     return true;
 }
@@ -98,8 +115,6 @@ RoombaController::terminate(){
         return;
     }
 
-    // Send the stop
-    stopOI();
     // Send power down
     powerDown();
 

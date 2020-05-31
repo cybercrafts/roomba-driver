@@ -23,7 +23,7 @@ int main(int argc, char** argv) {
     this_thread::sleep_for(chrono::milliseconds(500));
 
     // robot_controller->reset();
-    // return -1;
+    // this_thread::sleep_for(chrono::milliseconds(5000));
 
     cout << "Device stats\n";
     cout << "---------------------------------------\n";
@@ -48,10 +48,6 @@ int main(int argc, char** argv) {
     cout << temperature.toString() << endl;
 
     cout << "Complete\n";
-
-    // Power down
-    cout << "Powering down\n";
-    robot_controller->powerDown();
 
     robot_controller->terminate();
     cout << "Robot Terminated\n";

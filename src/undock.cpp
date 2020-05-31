@@ -27,11 +27,11 @@ int main(int argc, char** argv) {
     auto mode = robot_controller->getSensorData<Roomba::Sensor::OIMode>();
     cout << mode.toString() << endl;
 
-    cout << "Testing drive train: FORWARD\n";
-    // Drive forward
+    cout << "Drive backward to leave the dock\n";
+    // Drive backward
     int16_t velocity_mm_sec = -100;
     robot_controller->drive(velocity_mm_sec, 0);
-    this_thread::sleep_for(chrono::milliseconds(1500));
+    this_thread::sleep_for(chrono::milliseconds(2000));
     robot_controller->stop();
 
     auto distance =
@@ -50,6 +50,10 @@ int main(int argc, char** argv) {
     auto battery_capacity =
         robot_controller->getSensorData<Roomba::Sensor::BatteryCapacity>();
     cout << battery_capacity.toString() << endl;
+
+    auto battery_charge =
+        robot_controller->getSensorData<Roomba::Sensor::BatteryCharge>();
+    cout << battery_charge.toString() << endl;
 
     auto current =
         robot_controller->getSensorData<Roomba::Sensor::Current>();
