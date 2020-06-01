@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <memory>
+#include <vector>
 #include <map>
 
 #include "roomba_open_interface.h"
@@ -79,11 +80,17 @@ enum class PacketId : uint8_t {
 };
 
 const std::map<PacketId, uint8_t> PacketSizeList = {
+    // Group
+    {PacketId::GROUP_6, 52},
+    {PacketId::GROUP_100, 80},
+    {PacketId::GROUP_101, 28},
+
     // State
     {PacketId::OI_MODE, 1},
     {PacketId::LIGHT, 1},
     {PacketId::BUMP_WHEELDROP, 1},
     // Battery related
+    {PacketId::CHARGE_STATE, 1},
     {PacketId::TEMPERATURE, 1},
     {PacketId::VOLTAGE, 2},
     {PacketId::CURRENT, 2},
@@ -162,13 +169,50 @@ protected:
     uint8_t* data{nullptr};
 };
 
-std::unique_ptr<Packet> CreateSensorPacket(PacketId, uint8_t*);
+struct GroupPkt : public Packet {
+    const Packet* getPacket(PacketId id) const{
+        return m_PktList.at(id).get();
+    }
+protected:
+    GroupPkt(PacketId id) : Packet(id){
+    }
+    GroupPkt(PacketId id, uint8_t* data_ptr)
+        : Packet(id, data_ptr){
+    }
+    std::map<PacketId, std::unique_ptr<Packet>> m_PktList;
+};
+
+struct Group6Pkt : public GroupPkt {
+    Group6Pkt();
+    Group6Pkt(uint8_t* data_ptr);
+    std::string toString() const override;
+private:
+    void setup();
+};
+
+struct Group100Pkt : public GroupPkt {
+    Group100Pkt() : GroupPkt(PacketId::GROUP_100){
+    }
+    Group100Pkt(uint8_t* data_ptr)
+        : GroupPkt(PacketId::GROUP_100, data_ptr){
+    }
+    std::string toString() const override;
+};
+
+struct Group101Pkt : public GroupPkt {
+    Group101Pkt() : GroupPkt(PacketId::GROUP_101){
+    }
+    Group101Pkt(uint8_t* data_ptr)
+        : GroupPkt(PacketId::GROUP_101, data_ptr){
+    }
+    std::string toString() const override;
+};
 
 struct UnsignedValuePkt : public Packet{
     uint16_t getValue() const{
         return Roomba::utils::From2sComplement(data);
     }
-    std::string toString() const override {
+    virtual std::string toString() const override {
         std::ostringstream ss;
         ss << getValue();
         return ss.str();
@@ -185,7 +229,7 @@ struct SignedValuePkt : public Packet{
     int16_t getValue() const{
         return Roomba::utils::From2sComplement(data);
     }
-    std::string toString() const override {
+    virtual std::string toString() const override {
         std::ostringstream ss;
         ss << getValue();
         return ss.str();
@@ -252,6 +296,12 @@ struct DistanceTravelled : public SignedValuePkt{
     DistanceTravelled(uint8_t* data_ptr)
         : SignedValuePkt(PacketId::DISTANCE, data_ptr){
     }
+
+    std::string toString() const override {
+        std::ostringstream ss;
+        ss << "Distance travelled: " << getValue() << " mm";
+        return ss.str();
+    }
 };
 
 struct AngleTurned : public SignedValuePkt{
@@ -259,6 +309,11 @@ struct AngleTurned : public SignedValuePkt{
     }
     AngleTurned(uint8_t* data_ptr)
         : SignedValuePkt(PacketId::ANGLE, data_ptr){
+    }
+    std::string toString() const override {
+        std::ostringstream ss;
+        ss << "Angle turned: " << getValue() << " degrees";
+        return ss.str();
     }
 };
 
@@ -384,6 +439,41 @@ struct LightBumper : public Packet{
     }
 };
 
+//------------------------------------------------------------------------------
+//  Battery related
+//------------------------------------------------------------------------------
+
+struct ChargingState : public Packet{
+    ChargingState() : Packet(PacketId::CHARGE_STATE){
+    }
+    ChargingState(uint8_t* data_ptr)
+        : Packet(PacketId::CHARGE_STATE, data_ptr){
+    }
+    std::string toString() const override {
+        switch (*data){
+            case 0:
+                return "Not charging";
+            break;
+            case 1:
+                return "Reconditioning Charging";
+            break;
+            case 2:
+                return "Full Charging";
+            break;
+            case 3:
+                return "Trickle Charging";
+            break;
+            case 4:
+                return "Waiting";
+            break;
+            case 5:
+                return "Charging Fault Condition";
+            break;
+        }
+        return "Unknown";
+    }
+};
+
 
 struct Voltage : public SignedValuePkt{
     Voltage() : SignedValuePkt(PacketId::VOLTAGE){
@@ -407,6 +497,24 @@ struct Current : public SignedValuePkt{
     std::string toString() const override {
         std::ostringstream ss;
         ss << "Battery current: " << getValue() << " mA";
+        return ss.str();
+    }
+};
+
+struct Temperature : public Packet{
+    Temperature() : Packet(PacketId::TEMPERATURE){
+    }
+    Temperature(uint8_t* data_ptr)
+        : Packet(PacketId::TEMPERATURE, data_ptr){
+    }
+    int8_t getValue() const{
+        return (int8_t) *data;
+    }
+    std::string toString() const override {
+        std::ostringstream ss;
+        ss
+            << "Battery temperature: " << std::to_string(getValue())
+            << " C";
         return ss.str();
     }
 };
@@ -437,23 +545,12 @@ struct BatteryCharge : public UnsignedValuePkt{
     }
 };
 
-struct Temperature : public Packet{
-    Temperature() : Packet(PacketId::TEMPERATURE){
-    }
-    int8_t getValue() const{
-        return (int8_t) *data;
-    }
-    std::string toString() const override {
-        std::ostringstream ss;
-        ss
-            << "Battery temperature: " << std::to_string(getValue())
-            << " C";
-        return ss.str();
-    }
-};
 
 struct BumpAndWheelDrop : public Packet{
     BumpAndWheelDrop() : Packet(PacketId::BUMP_WHEELDROP){
+    }
+    BumpAndWheelDrop(uint8_t* data_ptr)
+        : Packet(PacketId::BUMP_WHEELDROP, data_ptr){
     }
     uint8_t getValue() const{
         return (uint8_t) *data;

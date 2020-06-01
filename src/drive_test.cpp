@@ -26,7 +26,7 @@ int main(int argc, char** argv) {
     auto mode = robot_controller->getSensorData<Roomba::Sensor::OIMode>();
     cout << mode.toString() << endl;
 
-    cout << "Switching to FULL mode\n";
+    cout << "\nSwitching to FULL mode\n";
     auto status = robot_controller->toFullMode();
     // cout << "Switching to SAFE mode\n";
     // auto status = robot_controller->toSafeMode();
@@ -40,52 +40,51 @@ int main(int argc, char** argv) {
     this_thread::sleep_for(chrono::milliseconds(1500));
     robot_controller->stop();
 
-    auto distance =
-        robot_controller->getSensorData<Roomba::Sensor::DistanceTravelled>();
-    cout << "Distance: " << distance.toString() << endl;
-    auto angleTurned =
-        robot_controller->getSensorData<Roomba::Sensor::AngleTurned>();
-    cout << "Angle: " << angleTurned.toString() << endl;
+    auto grp_pkt6_before =
+        robot_controller->getSensorData<Roomba::Sensor::Group6Pkt>();
+
+    cout
+        << grp_pkt6_before.getPacket(Roomba::Sensor::PacketId::DISTANCE)->toString()
+        << endl;
+
+    cout
+        << grp_pkt6_before.getPacket(Roomba::Sensor::PacketId::ANGLE)->toString()
+        << endl;
+
+    // auto distance =
+    //     robot_controller->getSensorData<Roomba::Sensor::DistanceTravelled>();
+    // cout << "Distance: " << distance.toString() << endl;
+    // auto angleTurned =
+    //     robot_controller->getSensorData<Roomba::Sensor::AngleTurned>();
+    // cout << "Angle: " << angleTurned.toString() << endl;
 
     // Drive backward
-    cout << "Testing drive train: BACKWARD\n";
+    cout << endl << "Testing drive train: BACKWARD\n";
 
     velocity_mm_sec = -velocity_mm_sec;
     robot_controller->drive(velocity_mm_sec, 0);
     this_thread::sleep_for(chrono::milliseconds(1500));
     robot_controller->stop();
 
-    distance =
-        robot_controller->getSensorData<Roomba::Sensor::DistanceTravelled>();
-    cout << "Distance: " << distance.toString() << endl;
+    auto grp_pkt6_after =
+        robot_controller->getSensorData<Roomba::Sensor::Group6Pkt>();
 
-    angleTurned =
-        robot_controller->getSensorData<Roomba::Sensor::AngleTurned>();
-    cout << "Angle: " << angleTurned.toString() << endl;
+    cout
+        << grp_pkt6_after.getPacket(Roomba::Sensor::PacketId::DISTANCE)->toString()
+        << endl;
+
+    cout
+        << grp_pkt6_after.getPacket(Roomba::Sensor::PacketId::ANGLE)->toString()
+        << endl;
 
     cout << "Device stats\n";
     cout << "---------------------------------------\n";
-    auto battery_voltage =
-        robot_controller->getSensorData<Roomba::Sensor::Voltage>();
-    cout << battery_voltage.toString() << endl;
-
-    auto battery_capacity =
-        robot_controller->getSensorData<Roomba::Sensor::BatteryCapacity>();
-    cout << battery_capacity.toString() << endl;
-
-    auto battery_charge =
-        robot_controller->getSensorData<Roomba::Sensor::BatteryCharge>();
-    cout << battery_charge.toString() << endl;
-
-    auto current =
-        robot_controller->getSensorData<Roomba::Sensor::Current>();
-    cout << current.toString() << endl;
-
-    auto temperature =
-        robot_controller->getSensorData<Roomba::Sensor::Temperature>();
-    cout << temperature.toString() << endl;
-
-    cout << "Complete\n";
+    cout << grp_pkt6_after.getPacket(Roomba::Sensor::PacketId::CAPACITY)->toString() << endl;
+    cout << grp_pkt6_after.getPacket(Roomba::Sensor::PacketId::CHARGE)->toString() << endl;
+    cout << grp_pkt6_after.getPacket(Roomba::Sensor::PacketId::VOLTAGE)->toString() << endl;
+    cout << grp_pkt6_after.getPacket(Roomba::Sensor::PacketId::CURRENT)->toString() << endl;
+    cout << grp_pkt6_after.getPacket(Roomba::Sensor::PacketId::TEMPERATURE)->toString() << endl;
+    cout << endl;
 
     // Power down
     cout << "Powering down\n";

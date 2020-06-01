@@ -61,7 +61,7 @@ public:
     // seekDock
     bool seekDock();
 
-    void getSensorData(Roomba::Sensor::Packet* pkt){
+    bool getSensorData(Roomba::Sensor::Packet* pkt){
         Roomba::OpCode cmd = Roomba::OpCode::SENSORS;
 
         int n = m_SerialPort->write((uint8_t*)&cmd, 1);
@@ -75,7 +75,7 @@ public:
             if (retry_count > 5){
                 std::cout << "No data available to read\n";
                 // Need to figure out how to best send the error
-                return;
+                return false;
             }
         }
         int bytes_received =
@@ -83,6 +83,7 @@ public:
                 pkt->getDataPtr(),
                 pkt->getDataSize()
         );
+        return true;
     }
     // getSensorData
     template <typename T>

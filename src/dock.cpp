@@ -50,90 +50,44 @@ int main(int argc, char** argv) {
 
     bool run_logging = true;
     auto logger = [&](RoombaController* robot_controller) {
-        vector<unique_ptr<Roomba::Sensor::Packet>> pkt_list;
-        pkt_list.push_back(
-            move(unique_ptr<Roomba::Sensor::Packet>(new Roomba::Sensor::DistanceTravelled())));
-        pkt_list.push_back(
-            move(unique_ptr<Roomba::Sensor::Packet>(new Roomba::Sensor::AngleTurned())));
-        pkt_list.push_back(
-            move(unique_ptr<Roomba::Sensor::Packet>(new Roomba::Sensor::EncoderLeft())));
-        pkt_list.push_back(
-            move(unique_ptr<Roomba::Sensor::Packet>(new Roomba::Sensor::EncoderRight())));
-        pkt_list.push_back(
-            move(unique_ptr<Roomba::Sensor::Packet>(new Roomba::Sensor::LightBumper())));
-        pkt_list.push_back(
-            move(unique_ptr<Roomba::Sensor::Packet>(new Roomba::Sensor::CliffLeftSignal())));
-        pkt_list.push_back(
-            move(unique_ptr<Roomba::Sensor::Packet>(new Roomba::Sensor::CliffFrontLeftSignal())));
-        pkt_list.push_back(
-            move(unique_ptr<Roomba::Sensor::Packet>(new Roomba::Sensor::CliffFrontRightSignal())));
-        pkt_list.push_back(
-            move(unique_ptr<Roomba::Sensor::Packet>(new Roomba::Sensor::CliffRightSignal())));
-        pkt_list.push_back(
-            move(unique_ptr<Roomba::Sensor::Packet>(new Roomba::Sensor::BumpAndWheelDrop())));
-        pkt_list.push_back(
-            move(unique_ptr<Roomba::Sensor::Packet>(new Roomba::Sensor::LightBumpRightSignal())));
 
-        struct SENSOR_DATA{
-            string distance;
-            string angle;
-            string encoder_left;
-            string encoder_right;
-            string light_bumper;
-            string cliff_left;
-            string cliff_front_left;
-            string cliff_front_right;
-            string cliff_right;
-            string bump_and_wheeldrop;
-            string light_bump_right_signal;
-            SENSOR_DATA(
-                const vector<unique_ptr<Roomba::Sensor::Packet>>& pkts){
-                distance = pkts[0]->toString();
-                angle = pkts[1]->toString();
-                encoder_left = pkts[2]->toString();
-                encoder_right = pkts[3]->toString();
-                light_bumper = pkts[4]->toString();
-                cliff_left = pkts[5]->toString();
-                cliff_front_left = pkts[6]->toString();
-                cliff_front_right = pkts[7]->toString();
-                cliff_right = pkts[8]->toString();
-                bump_and_wheeldrop = pkts[9]->toString();
-                light_bump_right_signal = pkts[10]->toString();
-            }
-            string toString(std::ostringstream& ss){
-                ss.str("");
-                ss.clear();
-                ss
-                    << distance << " "
-                    << angle << " "
-                    << cliff_left << " "
-                    << cliff_front_left << " "
-                    << cliff_front_right << " "
-                    << cliff_right << " "
-                    << light_bumper << " "
-                    << bump_and_wheeldrop << " "
-                    << light_bump_right_signal;
-                return ss.str();
-            }
-        };
-        std::ostringstream data_stream;
+        vector<uint8_t> rx_buffer(
+            Roomba::Sensor::PacketSizeList.at(Roomba::Sensor::PacketId::GROUP_6));
+
+        Roomba::Sensor::Group6Pkt grp_pkt(&rx_buffer[0]);
+
         while(run_logging){
             // Get the data
-            auto cmd_status = robot_controller->getSensorData(pkt_list);
-            SENSOR_DATA data(pkt_list);
+            auto cmd_status = robot_controller->getSensorData(&grp_pkt);
 
-            for (const auto& sensor : pkt_list){
-                cout << data.toString(data_stream) << "\n";
-            }
+            cout
+                << grp_pkt.getPacket(Roomba::Sensor::PacketId::DISTANCE)->toString()
+                << endl;
 
+            cout
+                << grp_pkt.getPacket(Roomba::Sensor::PacketId::ANGLE)->toString()
+                << endl;
+
+            cout
+                << grp_pkt.getPacket(Roomba::Sensor::PacketId::CHARGE_STATE)->toString()
+                << endl;
+            cout << endl;
             // Sleep
             if (g_ProcessInterrupted){
                 cout << "Got interruption. Terminating\n";
                 break;
             }
-            this_thread::sleep_for(chrono::milliseconds(500));
+            this_thread::sleep_for(chrono::milliseconds(1000));
         }
-        cout << "Logger done. Good bye\n";
+
+        cout << "Battery Status: " << endl;
+        auto cmd_status = robot_controller->getSensorData(&grp_pkt);
+        cout << grp_pkt.getPacket(Roomba::Sensor::PacketId::CHARGE_STATE)->toString() << endl;
+        cout << grp_pkt.getPacket(Roomba::Sensor::PacketId::CAPACITY)->toString() << endl;
+        cout << grp_pkt.getPacket(Roomba::Sensor::PacketId::CHARGE)->toString() << endl;
+        cout << grp_pkt.getPacket(Roomba::Sensor::PacketId::VOLTAGE)->toString() << endl;
+        cout << grp_pkt.getPacket(Roomba::Sensor::PacketId::CURRENT)->toString() << endl;
+        cout << grp_pkt.getPacket(Roomba::Sensor::PacketId::TEMPERATURE)->toString() << endl;
     };
 
     robot_controller->toSafeMode();
@@ -166,7 +120,7 @@ int main(int argc, char** argv) {
     }
 
     // Stop
-    robot_controller->powerDown();
+    //robot_controller->powerDown();
     robot_controller->terminate();
 
     return 0;

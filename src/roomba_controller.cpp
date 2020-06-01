@@ -68,6 +68,7 @@ unique_ptr<RoombaController> RoombaController::NewInstance(
 
     // Create the new object
     auto new_instance = new RoombaController(move(serial_port));
+    new_instance->stopStream();
 
     auto mode = new_instance->getSensorData<Roomba::Sensor::OIMode>();
     cout << "Mode after NewInstance: " << mode.toString()<< endl;
