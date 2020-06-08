@@ -151,19 +151,15 @@ public:
 
 private:
     explicit RoombaController(std::unique_ptr<SerialPort> serial_port);
-    //static std::string ToString(const std::vector<uint8_t>& data);
-
-    //static bool ConfigureSerial(int fd);
 
     bool startOI();
     void stopOI();
     bool changeOIMode(Roomba::OIMode desired_mode);
 
-public:
-    //const int   m_fd{0};
     std::unique_ptr<SerialPort>     m_SerialPort{nullptr};
     bool                            m_initialized{false};
 
     std::thread                     m_RxThread;
     std::atomic<bool>               m_RxStreaming;
+
 };

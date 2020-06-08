@@ -203,7 +203,6 @@ int main2(int argc, char** argv) {
     std::thread rx_thread(rx_thread_func, stop_processing);
     while (!rx_thread.joinable());
     cout << "Ready to process..." << endl;
-#endif
 
     std::signal(SIGINT, signal_handler);
     std::signal(SIGABRT, signal_handler);
@@ -229,6 +228,7 @@ int main2(int argc, char** argv) {
     if (g_ProcessInterrupted){
         cout << "Got interrupt\n";
     }
+#endif
 
     // Stop
     robot_controller->stopStream();
