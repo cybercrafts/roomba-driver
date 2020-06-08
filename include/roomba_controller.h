@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <vector>
 #include <thread>
+#include <atomic>
 #include <chrono>
 #include <functional>
 
@@ -126,23 +127,24 @@ public:
         std::vector<std::unique_ptr<Roomba::Sensor::Packet>>& pkt_list
     );
 
-    bool startStream(){
-        Roomba::OpCode cmd;
-        cmd = Roomba::OpCode::TOGGLE_STREAM;
-        auto n = m_SerialPort->write((uint8_t*)&cmd, 1);
-        uint8_t start = 1;
-        n = m_SerialPort->write((uint8_t*)&start, 1);
+    // bool startStream(){
+    //     Roomba::OpCode cmd;
+    //     cmd = Roomba::OpCode::TOGGLE_STREAM;
+    //     auto n = m_SerialPort->write((uint8_t*)&cmd, 1);
+    //     uint8_t start = 1;
+    //     n = m_SerialPort->write((uint8_t*)&start, 1);
 
-        return true;
-    }
+    //     return true;
+    // }
 
+    bool startStream();
     bool stopStream(){
         Roomba::OpCode cmd;
         cmd = Roomba::OpCode::TOGGLE_STREAM;
         auto n = m_SerialPort->write((uint8_t*)&cmd, 1);
         uint8_t stop = 0;
         n = m_SerialPort->write((uint8_t*)&stop, 1);
-
+        m_RxStreaming = false;
         return true;
     }
 
@@ -161,4 +163,7 @@ public:
     //const int   m_fd{0};
     std::unique_ptr<SerialPort>     m_SerialPort{nullptr};
     bool                            m_initialized{false};
+
+    std::thread                     m_RxThread;
+    std::atomic<bool>               m_RxStreaming;
 };

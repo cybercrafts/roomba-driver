@@ -3,6 +3,7 @@
 #include <vector>
 #include <cctype>
 #include <sstream>
+#include <thread>
 #include <strings.h>
 
 using namespace std;
@@ -468,5 +469,62 @@ RoombaController::setupSensorStream(
     }
 #endif
     return false;
+}
+
+bool
+RoombaController::startStream(){
+
+    // Rx pkt size
+    // With 115200 bps Roomba cannot transmit more than 172
+    // bytes per 15 ms according to the following calculation
+    // from their OI Spec:
+    // It is up to you not to request more data than can be sent at the
+    // current baud rate in the 15 ms time slot. For example, at
+    // 115200 baud, a maximum of 172 bytes can be sent in 15 ms:
+    // 15 ms / 10 bits (8 data + start + stop) * 115200 = 172.8
+    // If more data is requested, the data stream will eventually
+    // become corrupted. This can be confirmed by checking the checksum.
+    int buf_length =
+        1 + // The value 19
+        1 + // n-bytes value
+        (1+52) + // Pkt_id (1) + GROUP_6_size(52)
+        1; // Checksum
+
+    // First setup the Rx thread etc.
+    vector<uint8_t> rx_buffer;
+    rx_buffer.resize(buf_length);
+
+    // Next send the stream command
+    uint8_t tx_buf[3];
+    tx_buf[0] = (uint8_t) Roomba::OpCode::STREAM;
+    tx_buf[1] = 1;
+    tx_buf[2] = (uint8_t) Roomba::Sensor::PacketId::GROUP_6;
+
+    int n = m_SerialPort->write((uint8_t*)&tx_buf, 3);
+
+    // Now start the rx thread
+    m_RxStreaming = true;
+
+    while(m_RxStreaming){
+        // Read
+        m_SerialPort->read(rx_buffer, 0);
+        if (rx_buffer.size()){
+            cout << "BYTES_READ: " << rx_buffer.size() << "\n";
+            cout
+                << "Header: " << (int) rx_buffer[0]
+                << " Len: " << (int) rx_buffer[1]
+                << "\n";
+            //cout << SerialPort::ToString(rx_buffer);
+            rx_buffer.clear();
+        }
+
+        // Sleep 5 ms
+        this_thread::sleep_for(chrono::milliseconds(5));
+    }
+
+    // Done
+    cout << "Streamer thread done\n";
+
+    return true;
 }
 

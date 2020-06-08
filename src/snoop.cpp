@@ -36,6 +36,54 @@ int main(int argc, char** argv) {
     // Wait
     this_thread::sleep_for(chrono::milliseconds(500));
 
+    // Test the stream
+    auto rx_stream_handler = [&](){
+        cout << "Starting the Rx Receiver thread for the streamming data\n";
+        robot_controller->startStream();
+    };
+
+    std::signal(SIGINT, signal_handler);
+    std::signal(SIGABRT, signal_handler);
+
+    thread rx_recv_thread(rx_stream_handler);
+    // Wait until the thread starts up
+    while (!rx_recv_thread.joinable()){
+        this_thread::sleep_for(chrono::milliseconds(100));
+    }
+
+    while (!g_ProcessInterrupted){
+        this_thread::sleep_for(chrono::milliseconds(1000));
+    }
+
+    robot_controller->stopStream();
+    cout << "Waiting for the thread to terminate\n";
+    rx_recv_thread.join();
+
+    // good bye
+    robot_controller->terminate();
+    cout << "Robot Terminated\n";
+    return 0;
+}
+
+int main2(int argc, char** argv) {
+
+    // For now just use the clean
+    auto robot_controller = RoombaController::NewInstance("/dev/ttyUSB0");
+    if (!robot_controller){
+        cout << "Cannot create robot controller. Abort\n";
+        return -1;
+    }
+
+    if (!robot_controller->initialize()){
+        cout << "Cannot initialize Roomba. Abort\n";
+        return -1;
+    }
+
+    cout << "Roomba Initialized\n";
+
+    // Wait
+    this_thread::sleep_for(chrono::milliseconds(500));
+
     // Get the current Mode
     auto mode = robot_controller->getSensorData<Roomba::Sensor::OIMode>();
     if (mode.getValue() != Roomba::OIMode::PASSIVE){
