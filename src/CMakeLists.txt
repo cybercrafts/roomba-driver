@@ -29,6 +29,6 @@ target_link_libraries(turn_off serialport pthread)
 add_executable(snoop snoop.cpp)
 target_link_libraries(snoop serialport pthread)
 
-#add_executable(roomba_rider roomba_rider.cpp)
-#target_link_libraries(roomba_rider serialport pthread)
+add_executable(spot_clean spot_clean.cpp)
+target_link_libraries(spot_clean serialport pthread)
 

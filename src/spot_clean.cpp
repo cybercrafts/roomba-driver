@@ -104,8 +104,8 @@ int main(int argc, char** argv) {
         this_thread::sleep_for(chrono::milliseconds(100));
     }
 
-    // Dock the robot
-    robot_controller->seekDock();
+    // Spot Clean
+    robot_controller->spotClean();
 
     while (!g_ProcessInterrupted){
         this_thread::sleep_for(chrono::milliseconds(1000));

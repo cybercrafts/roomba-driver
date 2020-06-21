@@ -84,11 +84,14 @@ const std::map<PacketId, uint8_t> PacketSizeList = {
     {PacketId::GROUP_6, 52},
     {PacketId::GROUP_100, 80},
     {PacketId::GROUP_101, 28},
+    {PacketId::NUM_STREAM_PACKETS, 1},
+
 
     // State
     {PacketId::OI_MODE, 1},
     {PacketId::LIGHT, 1},
     {PacketId::BUMP_WHEELDROP, 1},
+
     // Battery related
     {PacketId::CHARGE_STATE, 1},
     {PacketId::TEMPERATURE, 1},
@@ -96,18 +99,17 @@ const std::map<PacketId, uint8_t> PacketSizeList = {
     {PacketId::CURRENT, 2},
     {PacketId::CAPACITY, 2},
     {PacketId::CHARGE, 2},
+    {PacketId::CHARGE_SOURCE, 1},
 
     // Motion
     {PacketId::DISTANCE, 2},
     {PacketId::ANGLE, 2},
     {PacketId::RIGHT_ENC, 2},
     {PacketId::LEFT_ENC, 2},
-
-    // Cliff detection
-    {PacketId::CLIFF_LEFT_SIGNAL, 2},
-    {PacketId::CLIFF_FRONT_LEFT_SIGNAL, 2},
-    {PacketId::CLIFF_FRONT_RIGHT_SIGNAL, 2},
-    {PacketId::CLIFF_RIGHT_SIGNAL, 2},
+    {PacketId::VEL, 2},
+    {PacketId::RADIUS, 2},
+    {PacketId::RIGHT_VEL, 2},
+    {PacketId::LEFT_VEL, 2},
 
     // Bumper state
     {PacketId::LIGHT_RIGHT, 2},
@@ -116,6 +118,16 @@ const std::map<PacketId, uint8_t> PacketSizeList = {
     {PacketId::LIGHT_CENTER_LEFT, 2},
     {PacketId::LIGHT_FRONT_LEFT, 2},
     {PacketId::LIGHT_LEFT, 2},
+
+    // Wall & Cliff
+    {PacketId::VIRTUAL_WALL, 1},
+    {PacketId::WALL_SIGNAL, 2},
+    {PacketId::CLIFF_LEFT_SIGNAL, 2},
+    {PacketId::CLIFF_FRONT_LEFT_SIGNAL, 2},
+    {PacketId::CLIFF_FRONT_RIGHT_SIGNAL, 2},
+    {PacketId::CLIFF_RIGHT_SIGNAL, 2},
+
+
 };
 
 struct Packet{
@@ -317,15 +329,85 @@ struct AngleTurned : public SignedValuePkt{
     }
 };
 
+struct VelocityRequested : public SignedValuePkt{
+    VelocityRequested() : SignedValuePkt(PacketId::VEL){
+    }
+    VelocityRequested(uint8_t* data_ptr)
+        : SignedValuePkt(PacketId::VEL, data_ptr){
+    }
+    std::string toString() const override {
+        std::ostringstream ss;
+        ss << "Requested Velocity: " << getValue() << " mm/s";
+        return ss.str();
+    }
+};
+
+struct RadiusRequested : public SignedValuePkt{
+    RadiusRequested() : SignedValuePkt(PacketId::RADIUS){
+    }
+    RadiusRequested(uint8_t* data_ptr)
+        : SignedValuePkt(PacketId::RADIUS, data_ptr){
+    }
+    std::string toString() const override {
+        std::ostringstream ss;
+        ss << "Requested radius: " << getValue() << " mm";
+        return ss.str();
+    }
+};
+
+struct RequestedRightVelocity : public SignedValuePkt{
+    RequestedRightVelocity() : SignedValuePkt(PacketId::RIGHT_VEL){
+    }
+    RequestedRightVelocity(uint8_t* data_ptr)
+        : SignedValuePkt(PacketId::RIGHT_VEL, data_ptr){
+    }
+    std::string toString() const override {
+        std::ostringstream ss;
+        ss << "Requested Right Velocity: " << getValue() << " mm/s";
+        return ss.str();
+    }
+};
+
+struct RequestedLeftVelocity : public SignedValuePkt{
+    RequestedLeftVelocity() : SignedValuePkt(PacketId::LEFT_VEL){
+    }
+    RequestedLeftVelocity(uint8_t* data_ptr)
+        : SignedValuePkt(PacketId::LEFT_VEL, data_ptr){
+    }
+    std::string toString() const override {
+        std::ostringstream ss;
+        ss << "Requested Left Velocity: " << getValue() << " mm/s";
+        return ss.str();
+    }
+};
+
 //------------------------------------------------------------------------------
 // Cliff signals
 //------------------------------------------------------------------------------
+
+struct WallSignal : public UnsignedValuePkt{
+    WallSignal() : UnsignedValuePkt(PacketId::WALL_SIGNAL){
+    }
+    WallSignal(uint8_t* data_ptr)
+        : UnsignedValuePkt(PacketId::WALL_SIGNAL, data_ptr){
+    }
+    std::string toString() const override {
+        std::ostringstream ss;
+        ss << "Wall signal: " << getValue();
+        return ss.str();
+    }
+};
 
 struct CliffLeftSignal : public UnsignedValuePkt{
     CliffLeftSignal() : UnsignedValuePkt(PacketId::CLIFF_LEFT_SIGNAL){
     }
     CliffLeftSignal(uint8_t* data_ptr)
         : UnsignedValuePkt(PacketId::CLIFF_LEFT_SIGNAL, data_ptr){
+    }
+    std::string toString() const override {
+        std::ostringstream ss;
+        ss << "Cliff Left: " << getValue();
+        return ss.str();
     }
 };
 
@@ -335,6 +417,11 @@ struct CliffFrontLeftSignal : public UnsignedValuePkt{
     CliffFrontLeftSignal(uint8_t* data_ptr)
         : UnsignedValuePkt(PacketId::CLIFF_FRONT_LEFT_SIGNAL, data_ptr){
     }
+    std::string toString() const override {
+        std::ostringstream ss;
+        ss << "Cliff Front Left: " << getValue();
+        return ss.str();
+    }
 };
 
 struct CliffFrontRightSignal : public UnsignedValuePkt{
@@ -343,6 +430,11 @@ struct CliffFrontRightSignal : public UnsignedValuePkt{
     CliffFrontRightSignal(uint8_t* data_ptr)
         : UnsignedValuePkt(PacketId::CLIFF_FRONT_RIGHT_SIGNAL, data_ptr){
     }
+    std::string toString() const override {
+        std::ostringstream ss;
+        ss << "Cliff Front Right: " << getValue();
+        return ss.str();
+    }
 };
 
 struct CliffRightSignal : public UnsignedValuePkt{
@@ -350,6 +442,11 @@ struct CliffRightSignal : public UnsignedValuePkt{
     }
     CliffRightSignal(uint8_t* data_ptr)
         : UnsignedValuePkt(PacketId::CLIFF_RIGHT_SIGNAL, data_ptr){
+    }
+    std::string toString() const override {
+        std::ostringstream ss;
+        ss << "Cliff Right: " << getValue();
+        return ss.str();
     }
 };
 
@@ -545,6 +642,21 @@ struct BatteryCharge : public UnsignedValuePkt{
     }
 };
 
+struct ChargingSourceAvailable : public Packet{
+    ChargingSourceAvailable() : Packet(PacketId::CHARGE_SOURCE){
+    }
+    ChargingSourceAvailable(uint8_t* data_ptr)
+        : Packet(PacketId::CHARGE_SOURCE, data_ptr){
+    }
+    uint8_t getValue() const{
+        return *data;
+    }
+    std::string toString() const override {
+        std::ostringstream ss;
+        ss << "Charging Source: " << (int)*data;
+        return ss.str();
+    }
+};
 
 struct BumpAndWheelDrop : public Packet{
     BumpAndWheelDrop() : Packet(PacketId::BUMP_WHEELDROP){
@@ -566,6 +678,23 @@ struct BumpAndWheelDrop : public Packet{
         return data;
     }
 };
+
+struct OiStreamNumPkts : public Packet{
+    OiStreamNumPkts() : Packet(PacketId::NUM_STREAM_PACKETS){
+    }
+    OiStreamNumPkts(uint8_t* data_ptr)
+        : Packet(PacketId::NUM_STREAM_PACKETS, data_ptr){
+    }
+    uint8_t getValue() const{
+        return (uint8_t) *data;
+    }
+    std::string toString() const override {
+        std::ostringstream ss;
+        ss << "Number of Streamed packets: " << (int) getValue();
+        return ss.str();
+    }
+};
+
 
 } // namespace Sensor
 } // namespace Roomba

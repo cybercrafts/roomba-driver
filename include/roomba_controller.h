@@ -127,17 +127,9 @@ public:
         std::vector<std::unique_ptr<Roomba::Sensor::Packet>>& pkt_list
     );
 
-    // bool startStream(){
-    //     Roomba::OpCode cmd;
-    //     cmd = Roomba::OpCode::TOGGLE_STREAM;
-    //     auto n = m_SerialPort->write((uint8_t*)&cmd, 1);
-    //     uint8_t start = 1;
-    //     n = m_SerialPort->write((uint8_t*)&start, 1);
-
-    //     return true;
-    // }
-
-    bool startStream();
+    void startStream(
+        std::function<void(Roomba::Sensor::Group6Pkt*)> callback
+    );
     bool stopStream(){
         Roomba::OpCode cmd;
         cmd = Roomba::OpCode::TOGGLE_STREAM;

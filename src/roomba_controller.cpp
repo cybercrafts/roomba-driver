@@ -471,8 +471,9 @@ RoombaController::setupSensorStream(
     return false;
 }
 
-bool
-RoombaController::startStream(){
+void
+RoombaController::startStream(
+    std::function<void(Roomba::Sensor::Group6Pkt*)> callback){
 
     // Rx pkt size
     // With 115200 bps Roomba cannot transmit more than 172
@@ -509,20 +510,14 @@ RoombaController::startStream(){
         // Read
         m_SerialPort->read(rx_buffer, 0);
         if (rx_buffer.size()){
-            cout << "BYTES_READ: " << rx_buffer.size() << "\n";
+            //cout << "BYTES_READ: " << rx_buffer.size() << "\n";
             if (19 ==rx_buffer[0]){
                 if ((uint8_t)Roomba::Sensor::PacketId::GROUP_6 == rx_buffer[2]){
                     Roomba::Sensor::Group6Pkt new_pkt(&rx_buffer[3]);
-                    cout << new_pkt.toString() << "\n";
+                    //cout << new_pkt.toString() << "\n";
+                    callback(&new_pkt);
                 }
             }
-            else {
-                cout
-                    << "Header: " << (int) rx_buffer[0]
-                    << " Len: " << (int) rx_buffer[1]
-                    << "\n";
-            }
-            //cout << SerialPort::ToString(rx_buffer);
             rx_buffer.clear();
         }
 
@@ -532,7 +527,5 @@ RoombaController::startStream(){
 
     // Done
     cout << "Streamer thread done\n";
-
-    return true;
 }
 
