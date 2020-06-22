@@ -30,11 +30,23 @@ std::string Group6Pkt::toString() const {
 
 void Group6Pkt::setup(){
 
+    // TODO
+    // Replace all these "new"s with preallocatd object
+    // Essentially provide Serialize methods
+
     uint8_t* data_ptr = getDataPtr();
 
     int offset = 0;
     unique_ptr<Packet> nextPkt(new BumpAndWheelDrop(data_ptr+offset));
     m_PktList[PacketId::BUMP_WHEELDROP] = std::move(nextPkt);
+
+    // Virtual wall
+    offset = 6;
+    // TODO
+
+    // Dirt detect
+    offset = 8;
+    // TODO
 
     offset = 12;
     nextPkt = unique_ptr<Packet>(new DistanceTravelled(data_ptr+offset));
@@ -120,9 +132,66 @@ void Group6Pkt::setup(){
     offset = 50;
     nextPkt = unique_ptr<Packet>(new RequestedLeftVelocity(data_ptr+offset));
     m_PktList[PacketId::LEFT_VEL] = std::move(nextPkt);
+}
 
+std::string Group6Pkt::LogHeaderStr(){
+    return "Distance Angle WallSignal CliffLeft CliffLeftFront CliffRightFront CliffRight Voltage Current ChargingSrc";
+}
 
+std::string Group6Pkt::LogDataStr(Group6Pkt* pkt){
+    ostringstream ss;
 
+    int16_t distance =
+        reinterpret_cast<const DistanceTravelled*>(
+        pkt->getPacket(PacketId::DISTANCE))->getValue();
+    ss << distance << " ";
+
+    int16_t angle =
+        reinterpret_cast<const AngleTurned*>(
+        pkt->getPacket(PacketId::ANGLE))->getValue();
+    ss << angle << " ";
+
+    uint16_t wall_signal =
+        reinterpret_cast<const WallSignal*>(
+        pkt->getPacket(PacketId::WALL_SIGNAL))->getValue();
+    ss << wall_signal << " ";
+
+    uint16_t cliff_left =
+        reinterpret_cast<const CliffLeftSignal*>(
+        pkt->getPacket(PacketId::CLIFF_LEFT_SIGNAL))->getValue();
+    ss << cliff_left << " ";
+
+    uint16_t cliff_front_left =
+        reinterpret_cast<const CliffFrontLeftSignal*>(
+        pkt->getPacket(PacketId::CLIFF_FRONT_LEFT_SIGNAL))->getValue();
+    ss << cliff_front_left << " ";
+
+    uint16_t cliff_front_right =
+        reinterpret_cast<const CliffFrontRightSignal*>(
+        pkt->getPacket(PacketId::CLIFF_FRONT_RIGHT_SIGNAL))->getValue();
+    ss << cliff_front_right << " ";
+
+    uint16_t cliff_right =
+        reinterpret_cast<const CliffRightSignal*>(
+        pkt->getPacket(PacketId::CLIFF_RIGHT_SIGNAL))->getValue();
+    ss << cliff_right << " ";
+
+    int16_t voltage =
+        reinterpret_cast<const Voltage*>(
+        pkt->getPacket(PacketId::VOLTAGE))->getValue();
+    ss << voltage/1000.0 << " ";
+
+    int16_t current =
+        reinterpret_cast<const Current*>(
+        pkt->getPacket(PacketId::CURRENT))->getValue();
+    ss << current/1000.0 << " ";
+
+    uint8_t charging_src =
+        reinterpret_cast<const ChargingSourceAvailable*>(
+        pkt->getPacket(PacketId::CHARGE_SOURCE))->getValue();
+    ss << to_string(charging_src) << " ";
+
+   return ss.str();
 
 }
 

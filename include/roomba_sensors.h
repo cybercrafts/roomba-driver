@@ -198,6 +198,11 @@ struct Group6Pkt : public GroupPkt {
     Group6Pkt();
     Group6Pkt(uint8_t* data_ptr);
     std::string toString() const override;
+
+    // The following methods are useful for logging
+    static std::string LogHeaderStr();
+    static std::string LogDataStr(Group6Pkt* pkt);
+
 private:
     void setup();
 };

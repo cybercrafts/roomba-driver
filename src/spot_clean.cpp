@@ -42,7 +42,9 @@ int main(int argc, char** argv) {
     // Test the stream
     auto rx_stream_handler = [&](){
         ofstream output_log;
-        output_log.open("output.log");
+        output_log.open("output_spot_clean.log");
+        output_log << sensor::Group6Pkt::LogHeaderStr() << "\n";
+
         cout << "Starting the Rx Receiver thread for the streamming data\n";
         int total_distance = 0;
         robot_controller->startStream([&](sensor::Group6Pkt* rx_pkt){
@@ -88,7 +90,8 @@ int main(int argc, char** argv) {
                 voltage/1000.0, charging_src
             );
             total_distance += distance;
-            output_log << rx_pkt->toString() << "\n";
+            output_log << sensor::Group6Pkt::LogDataStr(rx_pkt) << "\n";
+
         });
 
         output_log.close();
