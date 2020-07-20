@@ -1,13 +1,9 @@
 #include "roomba_controller.h"
 #include <iostream>
-#include <thread>
-#include <sys/ioctl.h>
 #include <vector>
-#include <termios.h> /* POSIX Terminal Control Definitions */
-#include <unistd.h>  /* UNIX standard function definitions */
-#include <fcntl.h>   /* File control definitions */
 #include <cctype>
 #include <sstream>
+#include <thread>
 #include <strings.h>
 
 using namespace std;
@@ -35,107 +31,57 @@ unique_ptr<RoombaController> RoombaController::NewInstance(
 
     // Set - HIGH
     ioctl(fd, TIOCMBIS, &RTS_flag);
-
     #endif
 
-    if (!RoombaController::ConfigureSerial(fd)){
-        cout << "Error configuring serial port\n";
+    std::unique_ptr<SerialPort>  serial_port(SerialPort::NewInstance(usb_port));
+    if (serial_port == nullptr){
+        cout << "Cannot create serial port\n";
         return nullptr;
     }
 
-    // Read the response from the robot
-    int bytes_available = 0;
-    int retry_count = 5;
-    vector<uint8_t> rx_buffer;
-    while(retry_count){
-        ioctl(fd, FIONREAD, &bytes_available);
-        if (bytes_available){
-            rx_buffer.resize(bytes_available);
-            auto n = read(fd, &rx_buffer[0], bytes_available);
-            cout << "Bytes available: " << bytes_available << " Read: " << n << endl;
-            cout << ToString(rx_buffer) << endl;
+    // Flush the incoming port
+    int hit_count = 0;
+    int bytes_read = 0;
+    int slience_counter = 0;
+    while (hit_count < 20){
+        vector<uint8_t> rx_buffer;
+        serial_port->read(rx_buffer, 0);
+        if (rx_buffer.size()){
+            bytes_read += rx_buffer.size();
+            cout << SerialPort::ToString(rx_buffer);
+            rx_buffer.clear();
+            slience_counter = 0;
         }
-        this_thread::sleep_for(chrono::milliseconds(25));
-        bytes_available = 0;
-        retry_count--;
+        else{
+            slience_counter++;
+        }
+        hit_count++;
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
     }
 
+    cout << endl;
+    cout << "Serial port created. Initializing controller\n";
+
+    cout
+        << "Slience count: " << slience_counter
+        << " Bytes read: " << bytes_read
+        << endl;
+
     // Create the new object
-    auto new_instance = new RoombaController(fd);
+    auto new_instance = new RoombaController(move(serial_port));
+    new_instance->stopStream();
+
+    auto mode = new_instance->getSensorData<Roomba::Sensor::OIMode>();
+    cout << "Mode after NewInstance: " << mode.toString()<< endl;
+
     return unique_ptr<RoombaController>(new_instance);
 }
 
-RoombaController::RoombaController(int fd)
-    : m_fd(fd){
+RoombaController::RoombaController(std::unique_ptr<SerialPort> serial_port)
+    : m_SerialPort(move(serial_port)){
 }
 
 RoombaController::~RoombaController(){
-    close(m_fd);
-}
-
-bool RoombaController::ConfigureSerial(int fd){
-
-    // Good serial port programming resources
-    // Theory: https://www.cmrr.umn.edu/~strupp/serial.html#CONTENTS
-    // Example:
-    //
-    struct termios tty_settings{0};
-
-    if (tcgetattr(fd, &tty_settings) != 0){
-        perror("USB port settings cannot be changed ");
-        return false;
-    }
-
-    cout << "Initial Serial Port settings\n";
-    cout << "Input Speed: " << tty_settings.c_ispeed << endl;
-    cout << "Output Speed: " << tty_settings.c_ospeed << endl;
-
-    cfsetspeed(&tty_settings, B115200);
-
-    // Parity - None
-    tty_settings.c_cflag &= ~PARENB;
-    tty_settings.c_iflag |= IGNPAR ;
-
-    // Stop bits 1
-    tty_settings.c_cflag &= ~CSTOPB;
-
-    // Data bits 8 (first clear the CSIZE mask)
-    tty_settings.c_iflag &= ~ISTRIP ;  // Clear the ISTRIP flag.
-    tty_settings.c_cflag &= ~CSIZE;;
-    tty_settings.c_cflag |= CS8;
-
-    tcflush(fd, TCIOFLUSH);
-
-    // Flow control H/W None
-    tty_settings.c_cflag &= ~CRTSCTS;
-    // Software Flow control None
-    tty_settings.c_iflag &= ~(IXON | IXOFF);
-
-    // Enable Rx and no modem control
-    tty_settings.c_cflag |= CREAD | CLOCAL;
-
-
-    // Ignore Break conditions on input.
-    tty_settings.c_iflag = IGNBRK;
-    tty_settings.c_oflag = 0;
-
-    // Clear the cannonical mode by clearing this
-    tty_settings.c_lflag = 0;
-
-    // No Output Processing i.e., we need raw
-    tty_settings.c_oflag &= ~OPOST;
-    // tty_settings.c_oflag &= ~ONLCR;
-
-    // Just use the default for the following
-    //tty_settings.c_cc[VTIME]    = 0;   /* inter-character timer unused */
-    //tty_settings.c_cc[VMIN]     = 1;   /* non-blocking read */
-
-    if (tcsetattr(fd, TCSANOW, &tty_settings) != 0) {
-        perror("Error from tcsetattr: ");
-        return false;
-    }
-
-    return true;
 }
 
 //------------------------------------------------------------------------------
@@ -154,12 +100,8 @@ RoombaController::initialize(){
         return false;
     }
 
-    // // Change the color of the Power LED
-    // Roomba::OpCode cmd = Roomba::OpCode::LEDS;
-    // write(m_fd, &cmd, 1);
-    // uint8_t data = 4; write(m_fd, &data, 1);
-    // data = 0; write(m_fd, &data, 1);
-    // data = 255; write(m_fd, &data, 1);
+    auto mode = getSensorData<Roomba::Sensor::OIMode>();
+    cout << "Mode after Iitialize: " << mode.toString()<< endl;
 
     m_initialized = true;
     return true;
@@ -175,36 +117,11 @@ RoombaController::terminate(){
         return;
     }
 
-    // Send the stop
-    stopOI();
     // Send power down
     powerDown();
 
     m_initialized = false;
 
-}
-
-//------------------------------------------------------------------------------
-// ToString
-//------------------------------------------------------------------------------
-
-string
-RoombaController::ToString(const vector<uint8_t>& data){
-    ostringstream output;
-    for ( auto i = 0; i < data.size(); i++){
-        if (isprint(data[i])){
-            output << data[i];
-        }
-        else if (isspace(data[i])){
-            output << data[i];
-        }
-        else {
-            int int_value = (int) data[i];
-            //output << "0x" << hex << (int) data[i];
-            output << int_value << endl;
-        }
-    }
-    return output.str();
 }
 
 //------------------------------------------------------------------------------
@@ -216,8 +133,7 @@ RoombaController::startOI(){
     // Send the start
     Roomba::OpCode cmd;
     cmd = Roomba::OpCode::START;
-    auto n = write(m_fd, &cmd, 1);
-    if (write(m_fd, &cmd, 1) != 1){
+    if (m_SerialPort->write((uint8_t*)&cmd, 1) != 1){
         perror("Error writing to the port ");
         return false;
     }
@@ -234,7 +150,7 @@ void
 RoombaController::stopOI() {
     Roomba::OpCode cmd;
     cmd = Roomba::OpCode::STOP;
-    auto n = write(m_fd, &cmd, 1);
+    auto n = m_SerialPort->write((uint8_t*)&cmd, 1);
     this_thread::sleep_for(chrono::milliseconds(50));
     if ( n != 1 ){
         perror("Error writing to the port ");
@@ -249,11 +165,45 @@ void
 RoombaController::powerDown(){
     Roomba::OpCode cmd;
     cmd = Roomba::OpCode::POWER;
-    auto n = write(m_fd, &cmd, 1);
+    auto n = m_SerialPort->write((uint8_t*)&cmd, 1);
     this_thread::sleep_for(chrono::milliseconds(50));
     if ( n != 1 ){
         perror("Error writing to the port ");
     }
+}
+
+//------------------------------------------------------------------------------
+// spotClean
+//------------------------------------------------------------------------------
+
+bool
+RoombaController::spotClean(){
+    Roomba::OpCode cmd;
+    cmd = Roomba::OpCode::SPOT;
+    auto n = m_SerialPort->write((uint8_t*)&cmd, 1);
+    this_thread::sleep_for(chrono::milliseconds(50));
+    if ( n != 1 ){
+        perror("Error writing to the port ");
+        return false;
+    }
+    return true;
+}
+
+//------------------------------------------------------------------------------
+// seekDock
+//------------------------------------------------------------------------------
+
+bool
+RoombaController::seekDock(){
+    Roomba::OpCode cmd;
+    cmd = Roomba::OpCode::DOCK;
+    auto n = m_SerialPort->write((uint8_t*)&cmd, 1);
+    this_thread::sleep_for(chrono::milliseconds(50));
+    if ( n != 1 ){
+        perror("Error writing to the port ");
+        return false;
+    }
+    return true;
 }
 
 //------------------------------------------------------------------------------
@@ -264,44 +214,27 @@ void
 RoombaController::reset(){
     Roomba::OpCode cmd;
     cmd = Roomba::OpCode::RESET;
-    auto n = write(m_fd, &cmd, 1);
+    auto n = m_SerialPort->write((uint8_t*)&cmd, 1);
     this_thread::sleep_for(chrono::milliseconds(200));
-}
 
-//------------------------------------------------------------------------------
-// getCurrentOIMode
-//------------------------------------------------------------------------------
-
-Roomba::OIMode
-RoombaController::getCurrentOIMode(){
-    Roomba::OpCode cmd = Roomba::OpCode::SENSORS;
-    Roomba::SensorPacketID pkt_id = Roomba::SensorPacketID::OI_MODE;
-    int n = write(m_fd, &cmd, 1);
-    n = write(m_fd, &pkt_id, 1);
-    int bytes_available = 0;
-    vector<uint8_t> rx_buffer;
-    int retry_count = 5;
-    while(retry_count){
-        ioctl(m_fd, FIONREAD, &bytes_available);
-        if (bytes_available){
-            // Assert if this is more than 1
-            // TODO
-            rx_buffer.resize(bytes_available);
-            n = read(m_fd, &rx_buffer[0], bytes_available);
-            //cout << "getCurrentOIMode()) Bytes available: " << bytes_available << " Read: " << n << endl;
-            //cout << ToString(rx_buffer) << endl;
-            Roomba::OIMode mode = (Roomba::OIMode) rx_buffer[0];
-            return mode;
+    int hit_count = 0;
+    while (hit_count < 10){
+        vector<uint8_t> rx_buffer;
+        m_SerialPort->read(rx_buffer, 0);
+        if (rx_buffer.size()){
+            cout << "Bytes: "
+                << rx_buffer.size()
+                << "\n---------------------------------------------\n";
+            cout << SerialPort::ToString(rx_buffer);
+            cout << "----------------------------------------------\n";
+            hit_count++;
         }
-        this_thread::sleep_for(chrono::milliseconds(25));
-        retry_count--;
+        std::this_thread::sleep_for(std::chrono::milliseconds(15));
     }
-
-    return Roomba::OIMode::UNAVAILABLE;
 }
 
 //------------------------------------------------------------------------------
-// getCurrentOIMode
+// changeOIMode
 //------------------------------------------------------------------------------
 
 bool
@@ -316,12 +249,13 @@ RoombaController::changeOIMode(Roomba::OIMode desired_mode){
         break;
         default:
             cout
-                << "Unsupported mode change requested: " << (int) desired_mode << endl;
+                << "Unsupported mode change requested: "
+                << (int) desired_mode << endl;
             return false;
         break;
     }
 
-    auto n = write(m_fd, &cmd, 1);
+    auto n = m_SerialPort->write((uint8_t*)&cmd, 1);
     this_thread::sleep_for(chrono::milliseconds(25));
     if ( n != 1 ){
         perror("Write failed ");
@@ -331,25 +265,11 @@ RoombaController::changeOIMode(Roomba::OIMode desired_mode){
 }
 
 //------------------------------------------------------------------------------
-// intTo2sComplementBytes
-//------------------------------------------------------------------------------
-
-void
-RoombaController::intTo2sComplementBytes(int16_t int_val, uint8_t bytes[2]){
-    // We are already on a 2's complement system
-    // Just need to break the number into two bytes
-    // High first then the low
-    uint16_t high = int_val & 0xFF00;
-    bytes[0] = high >> 8;
-    bytes[1] = int_val & 0xFF;
-}
-
-//------------------------------------------------------------------------------
 // drive
 //------------------------------------------------------------------------------
 
 bool
-RoombaController::drive(int16_t vel_in_mm_sec){
+RoombaController::drive(int16_t vel_in_mm_sec, int16_t turn_radius_in_mm){
     // Cap the value
     if (vel_in_mm_sec < -500){
         vel_in_mm_sec = -500;
@@ -358,44 +278,254 @@ RoombaController::drive(int16_t vel_in_mm_sec){
         vel_in_mm_sec = 500;
     }
 
-    uint8_t bytes[2];
-    intTo2sComplementBytes(vel_in_mm_sec, bytes);
-
-    uint8_t radius[2]{0x0, 0x0};
-    Roomba::OpCode cmd = Roomba::OpCode::DRIVE;
-
-    write(m_fd, &cmd, 1);
-    write(m_fd, &bytes[0], 1);
-    write(m_fd, &bytes[1], 1);
-    write(m_fd, &radius[0], 1);
-    write(m_fd, &radius[1], 1);
-}
-
-uint16_t
-RoombaController::getRightEncoder()
-{
-    Roomba::OpCode cmd = Roomba::OpCode::SENSORS;
-    Roomba::SensorPacketID pkt_id = Roomba::SensorPacketID::RIGHT_ENC;
-    int n = write(m_fd, &cmd, 1);
-    n = write(m_fd, &pkt_id, 1);
-    this_thread::sleep_for(chrono::milliseconds(50));
-
-    int bytes_available = 0;
-    vector<uint8_t> rx_buffer;
-    ioctl(m_fd, FIONREAD, &bytes_available);
-    if (bytes_available == 2){
-        //cout << "BYTES AVAILABLE: " << bytes_available << endl;
-        // Assert if this is more than 2
-        // TODO
-        rx_buffer.resize(bytes_available);
-        n = read(m_fd, &rx_buffer[0], bytes_available);
-        uint16_t encoder = 0;
-        encoder = rx_buffer[0];
-        encoder << 8;
-        encoder += rx_buffer[1];
-        return encoder;
+    if (turn_radius_in_mm < -2000){
+        turn_radius_in_mm = -2000;
+    }
+    if (turn_radius_in_mm > 2000){
+        turn_radius_in_mm = 2000;
     }
 
-    return 0;
+
+    uint8_t velocity[2];
+    Roomba::utils::To2sComplementBytes(vel_in_mm_sec, velocity);
+
+    uint8_t radius[2];
+    Roomba::utils::To2sComplementBytes(turn_radius_in_mm, radius);
+
+    Roomba::OpCode cmd = Roomba::OpCode::DRIVE;
+
+    m_SerialPort->write((uint8_t*)&cmd, 1);
+    m_SerialPort->write((uint8_t*)&velocity[0], 1);
+    m_SerialPort->write((uint8_t*)&velocity[1], 1);
+    m_SerialPort->write((uint8_t*)&radius[0], 1);
+    m_SerialPort->write((uint8_t*)&radius[1], 1);
+
+    // Error handling in write failure
+    // TODO
+
+    return true;
+}
+
+//------------------------------------------------------------------------------
+// getSensorData
+//------------------------------------------------------------------------------
+
+bool
+RoombaController::getSensorData(
+    vector<unique_ptr<Roomba::Sensor::Packet>>& pkt_list){
+
+    // Prepare the data buffer for the sensor data
+    size_t buf_length = 0;
+    vector<uint8_t> tx_data;
+    tx_data.push_back((uint8_t)Roomba::OpCode::QUERY_LIST);
+    tx_data.push_back(pkt_list.size());
+    for (const auto& pkt_requested : pkt_list){
+        buf_length += pkt_requested->getDataSize();
+        tx_data.push_back(*pkt_requested->getId());
+    }
+    vector<uint8_t> rx_buffer;
+    rx_buffer.resize(buf_length);
+
+    // Now send the command
+    int bytes_sent = 0;
+    if
+    (
+        (bytes_sent = m_SerialPort->write(&tx_data[0], tx_data.size())) !=
+        tx_data.size()
+    ){
+        perror("Error sending command: ");
+        return false;
+    }
+    cout << "Bytes sent: " << bytes_sent << endl;
+
+    // Now wait for the response
+    bool status = m_SerialPort->read(rx_buffer, 50);
+    if (!status){
+        cout << "Error reading response\n";
+        return false;
+    }
+    cout << "Bytes received: " << rx_buffer.size() << endl;
+    if (rx_buffer.size() != buf_length){
+        cout <<
+            "Din't receive the full response. Got: " << rx_buffer.size() <<
+            " Expected: " << buf_length << endl;
+        return false;
+    }
+
+    int offset = 0;
+    for ( const auto& pkt_requested : pkt_list){
+        memcpy(
+            pkt_requested->getDataPtr(),
+            &rx_buffer[offset],
+            pkt_requested->getDataSize());
+        offset += pkt_requested->getDataSize();
+    }
+    return true;
+
+#if 0
+    // Now wait for the response
+    int bytes_available = 0;
+    int retry_count = 5;
+    while(retry_count){
+        ioctl(m_fd, FIONREAD, &bytes_available);
+        if (bytes_available == rx_buffer.size()){
+            auto n = read(m_fd, &rx_buffer[0], rx_buffer.size());
+            //cout << "Bytes expected: " << rx_buffer.size() << " Read: " << n << endl;
+            if (n != rx_buffer.size()){
+                perror("Error reading response. ");
+                return false;
+            }
+            //cout << "Bytes read: " << n << " Retry: " <<  5 - retry_count << endl;
+            int offset = 0;
+            for ( const auto& pkt_requested : pkt_list){
+                memcpy(
+                    pkt_requested->getDataPtr(),
+                    &rx_buffer[offset],
+                    pkt_requested->getDataSize());
+                offset += pkt_requested->getDataSize();
+            }
+            return true;
+        }
+        //cout << "Bytes expected: " << rx_buffer.size() << " available: " << bytes_available << endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+        retry_count--;
+    }
+#endif
+    return false;
+}
+
+//------------------------------------------------------------------------------
+// setupSensorStream
+//------------------------------------------------------------------------------
+
+bool
+RoombaController::setupSensorStream(
+    vector<unique_ptr<Roomba::Sensor::Packet>>& pkt_list){
+
+    // Prepare the data buffer for the sensor data
+    size_t buf_length = 0;
+    vector<uint8_t> tx_data;
+    tx_data.push_back((uint8_t)Roomba::OpCode::STREAM);
+    tx_data.push_back(pkt_list.size());
+    for (const auto& pkt_requested : pkt_list){
+        buf_length += pkt_requested->getDataSize();
+        tx_data.push_back(*pkt_requested->getId());
+    }
+
+    cout << "RX Pkt buffer length: " << buf_length << "\n";
+    if (buf_length > 172){
+        // With 115200 bps Roomba cannot transmit more than 172
+        // bytes per 15 ms according to the following calculation
+        // from their OI Spec:
+        // It is up to you not to request more data than can be sent at the
+        // current baud rate in the 15 ms time slot. For example, at
+        // 115200 baud, a maximum of 172 bytes can be sent in 15 ms:
+        // 15 ms / 10 bits (8 data + start + stop) * 115200 = 172.8
+        // If more data is requested, the data stream will eventually
+        // become corrupted. This can be confirmed by checking the checksum.
+        cout << "Requested sensor packet length exceeds 172 bytes\n";
+        return false;
+    }
+
+    // auto rx_thread_func = [&]
+    vector<uint8_t> rx_buffer;
+    rx_buffer.resize(buf_length);
+
+    // Now send the command
+    int bytes_sent = 0;
+    bytes_sent = m_SerialPort->write(&tx_data[0], tx_data.size());
+    cout << "BYTES SENT: " << bytes_sent << endl;
+
+    // Stop the sensor stream. There is a separate command for that
+    stopStream();
+
+#if 0
+    // Now wait for the response
+    int bytes_available = 0;
+    int retry_count = 5;
+    while(retry_count){
+        ioctl(m_fd, FIONREAD, &bytes_available);
+        if (bytes_available == rx_buffer.size()){
+            auto n = read(m_fd, &rx_buffer[0], rx_buffer.size());
+            //cout << "Bytes expected: " << rx_buffer.size() << " Read: " << n << endl;
+            if (n != rx_buffer.size()){
+                perror("Error reading response. ");
+                return false;
+            }
+            //cout << "Bytes read: " << n << " Retry: " <<  5 - retry_count << endl;
+            int offset = 0;
+            for ( const auto& pkt_requested : pkt_list){
+                memcpy(
+                    pkt_requested->getDataPtr(),
+                    &rx_buffer[offset],
+                    pkt_requested->getDataSize());
+                offset += pkt_requested->getDataSize();
+            }
+            return true;
+        }
+        //cout << "Bytes expected: " << rx_buffer.size() << " available: " << bytes_available << endl;
+        std::this_thread::sleep_for(std::chrono::milliseconds(25));
+        retry_count--;
+    }
+#endif
+    return false;
+}
+
+void
+RoombaController::startStream(
+    std::function<void(Roomba::Sensor::Group6Pkt*)> callback){
+
+    // Rx pkt size
+    // With 115200 bps Roomba cannot transmit more than 172
+    // bytes per 15 ms according to the following calculation
+    // from their OI Spec:
+    // It is up to you not to request more data than can be sent at the
+    // current baud rate in the 15 ms time slot. For example, at
+    // 115200 baud, a maximum of 172 bytes can be sent in 15 ms:
+    // 15 ms / 10 bits (8 data + start + stop) * 115200 = 172.8
+    // If more data is requested, the data stream will eventually
+    // become corrupted. This can be confirmed by checking the checksum.
+    int buf_length =
+        1 + // The value 19
+        1 + // n-bytes value
+        (1+52) + // Pkt_id (1) + GROUP_6_size(52)
+        1; // Checksum
+
+    // First setup the Rx thread etc.
+    vector<uint8_t> rx_buffer;
+    rx_buffer.resize(buf_length);
+
+    // Next send the stream command
+    uint8_t tx_buf[3];
+    tx_buf[0] = (uint8_t) Roomba::OpCode::STREAM;
+    tx_buf[1] = 1;
+    tx_buf[2] = (uint8_t) Roomba::Sensor::PacketId::GROUP_6;
+
+    int n = m_SerialPort->write((uint8_t*)&tx_buf, 3);
+
+    // Now start the rx thread
+    m_RxStreaming = true;
+
+    while(m_RxStreaming){
+        // Read
+        m_SerialPort->read(rx_buffer, 0);
+        if (rx_buffer.size()){
+            //cout << "BYTES_READ: " << rx_buffer.size() << "\n";
+            if (19 ==rx_buffer[0]){
+                if ((uint8_t)Roomba::Sensor::PacketId::GROUP_6 == rx_buffer[2]){
+                    Roomba::Sensor::Group6Pkt new_pkt(&rx_buffer[3]);
+                    //cout << new_pkt.toString() << "\n";
+                    callback(&new_pkt);
+                }
+            }
+            rx_buffer.clear();
+        }
+
+        // Sleep 5 ms
+        this_thread::sleep_for(chrono::milliseconds(5));
+    }
+
+    // Done
+    cout << "Streamer thread done\n";
 }
 
